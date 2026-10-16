@@ -696,6 +696,73 @@
     refresh({ related: false });
   });
 
+  // ---- resizable columns ----
+  // Column widths are fractions of the space left after the two gutters, remembered per browser.
+  const LAYOUT_KEY = 'ctxpack:layout';
+  const DEFAULT_COLS = [0.33, 0.31, 0.36];
+  const MIN_COL = 240;
+  let cols = DEFAULT_COLS.slice();
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length === 3 && saved.every(n => typeof n === 'number' && n > 0)) cols = saved;
+  } catch {}
+
+  function applyCols() {
+    document.querySelector('.grid').style.setProperty('--cols',
+      `minmax(0, ${cols[0]}fr) var(--gutter) minmax(0, ${cols[1]}fr) var(--gutter) minmax(0, ${cols[2]}fr)`);
+  }
+  function saveCols() {
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(cols)); } catch {}
+  }
+  // Gutter i moves the border between columns i and i+1; the third column keeps its width.
+  function moveBoundary(from, i, deltaPx, avail) {
+    const px = from.map(f => f * avail);
+    const pair = px[i] + px[i + 1];
+    px[i] = Math.min(Math.max(px[i] + deltaPx, MIN_COL), pair - MIN_COL);
+    px[i + 1] = pair - px[i];
+    cols = px.map(p => p / avail);
+    applyCols();
+  }
+  const availWidth = g => g.parentElement.clientWidth - 2 * g.offsetWidth;
+
+  document.querySelectorAll('.gutter').forEach(g => {
+    const i = Number(g.dataset.i);
+    g.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      g.setPointerCapture(e.pointerId);
+      const start = cols.slice();
+      const x0 = e.clientX;
+      const avail = availWidth(g);
+      g.classList.add('active');
+      document.body.classList.add('resizing');
+      const move = ev => moveBoundary(start, i, ev.clientX - x0, avail);
+      const up = () => {
+        g.removeEventListener('pointermove', move);
+        g.removeEventListener('pointerup', up);
+        g.removeEventListener('pointercancel', up);
+        g.classList.remove('active');
+        document.body.classList.remove('resizing');
+        saveCols();
+      };
+      g.addEventListener('pointermove', move);
+      g.addEventListener('pointerup', up);
+      g.addEventListener('pointercancel', up);
+    });
+    g.addEventListener('dblclick', () => {
+      cols = DEFAULT_COLS.slice();
+      applyCols();
+      saveCols();
+    });
+    g.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      moveBoundary(cols, i, e.key === 'ArrowLeft' ? -32 : 32, availWidth(g));
+      saveCols();
+    });
+  });
+  applyCols();
+
   // ---- boot ----
   async function init() {
     try {
