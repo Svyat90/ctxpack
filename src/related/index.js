@@ -8,7 +8,7 @@ export { createContext } from './context.js';
 
 // Order here is also the display order within one level.
 const ALL = [...phpRules, ...vueRules, ...testRules];
-const ORDER = ['controller-routes', 'controller-deps', 'inertia-page', 'vue-imports', 'vue-routes', 'php-inheritance', 'model-extras', 'tests'];
+const ORDER = ['controller-routes', 'controller-deps', 'php-deps', 'inertia-page', 'vue-imports', 'vue-routes', 'php-inheritance', 'model-extras', 'tests'];
 export const RULES = ORDER.map(name => ALL.find(r => r.name === name));
 export const RULE_NAMES = ORDER;
 export { GROUPS, groupOf } from './groups.js';

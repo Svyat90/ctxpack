@@ -64,6 +64,7 @@ ctxpack init ~/code/app     # створити .ctxpack.json
 |---|---|
 | Route контролера | рядки в `routes/*.php`, де згадано контролер |
 | Залежності контролера | FormRequest, Resource, Model, Policy, Service з сигнатур, `new X`, `X::` |
+| Залежності класів | для будь-якого іншого класу (сервіси, jobs, actions…): типи параметрів конструктора й методів і типізовані властивості, зокрема класи з того самого namespace без `use` |
 | Inertia-сторінка | `Inertia::render('Users/Index')` → `resources/js/Pages/Users/Index.vue` |
 | Імпорти Vue/JS | відносні імпорти та `@/…` |
 | route() у Vue | `route('users.index')` → файл маршрутів і контролер |

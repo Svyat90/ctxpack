@@ -137,3 +137,50 @@ test('groupOf: services, policies under app/Models, Inertia pages', async () => 
   assert.equal(groupOf('database/migrations/x.php'), 'database');
   assert.equal(groupOf('app/Enums/Status.php'), 'php');
 });
+
+test('class dependencies: same-namespace classes from constructors, parameters and typed properties', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ctxpack-deps-'));
+  const put = (file, text) => {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  };
+  put('app/Services/OrderService.php', `<?php
+namespace App\\Services;
+
+use App\\Models\\Order;
+
+class OrderService
+{
+    private Mailer $mailer;
+
+    public function __construct(
+        #[Tag('gateways')] private readonly PaymentGateway $gateway,
+        private Clock $clock = new Clock(),
+        private ?Logger $logger = null,
+    ) {}
+
+    public function ship(Order $order, Courier|Shipping $by, int $id): void {}
+}`);
+  for (const name of ['PaymentGateway', 'Clock', 'Logger', 'Courier', 'Shipping', 'Mailer', 'Unused']) {
+    put(`app/Services/${name}.php`, `<?php namespace App\\Services; class ${name} {}`);
+  }
+  put('app/Models/Order.php', '<?php namespace App\\Models; class Order {}');
+  try {
+    const cfg = loadConfig(root);
+    const { listFiles } = await import('../src/scan.js');
+    const ctx = createContext(root, listFiles(root, cfg, { useGit: false }).files, cfg);
+    const s = byPath(findRelated(ctx, ['app/Services/OrderService.php'], cfg.related));
+    for (const name of ['PaymentGateway', 'Clock', 'Logger', 'Courier', 'Shipping', 'Mailer']) {
+      assert.equal(s[`app/Services/${name}.php`]?.rule, 'php-deps', name);
+    }
+    assert.equal(s['app/Models/Order.php'].reason, 'Model Order');
+    assert.equal(s['app/Services/Unused.php'], undefined);
+    assert.match(s['app/Services/PaymentGateway.php'].sites[0].code, /PaymentGateway \$gateway/);
+    assert.deepEqual(findRelated(ctx, ['app/Services/OrderService.php'], { ...cfg.related, rules: { 'php-deps': false } }), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

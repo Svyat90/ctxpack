@@ -48,12 +48,39 @@ export function parsePhp(text) {
   return info;
 }
 
-// Class names referenced from method signatures, `new X` and `X::` calls.
-export function referencedClasses(info) {
-  const names = new Set();
-  for (const m of info.body.matchAll(/function\s+&?\w+\s*\(([^)]*)\)/g)) {
-    for (const t of m[1].matchAll(/(?:^|[(,|])\s*(?:(?:public|protected|private|readonly)\s+)*\??([A-Z\\][\w\\]*)\s+&?(?:\.\.\.)?\$/g)) names.add(t[1]);
+// Parameter lists of the functions and closures in a class body. The closing parenthesis is found by
+// depth, so a default value (`= new Foo()`) or an attribute (`#[Attr(...)]`) does not end the list early.
+function paramLists(body) {
+  const out = [];
+  for (const m of body.matchAll(/\bfunction\s*&?\s*\w*\s*\(/g)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const start = i;
+    for (; i < body.length && depth; i++) {
+      if (body[i] === '(') depth++;
+      else if (body[i] === ')') depth--;
+    }
+    out.push(body.slice(start, i - 1).replace(/#\[(?:[^[\]]|\[[^\]]*\])*\]/g, ' '));
   }
+  return out;
+}
+
+// Class names a class depends on through its signatures: parameter types (constructor injection,
+// promoted properties, method parameters, union members) and typed properties.
+export function signatureClasses(info) {
+  const names = new Set();
+  // A type is `Foo`, `?Foo`, `Foo|Bar|null` or `Foo&Bar`; only class names (capitalised) are kept.
+  const add = type => type.split(/[|&]/).map(x => x.replace(/^\?/, '')).filter(x => /^[A-Z\\]/.test(x)).forEach(x => names.add(x));
+  for (const list of paramLists(info.body)) {
+    for (const t of list.matchAll(/(?:^|,)\s*(?:(?:public|protected|private|readonly)\s+)*([?\w\\|&]+)\s+&?(?:\.\.\.)?\$/g)) add(t[1]);
+  }
+  for (const t of info.body.matchAll(/^[ \t]*(?:(?:public|protected|private|readonly|static|var)\s+)+([?\w\\|&]+)\s+\$/gm)) add(t[1]);
+  return names;
+}
+
+// Class names referenced from signatures, `new X` and `X::` calls.
+export function referencedClasses(info) {
+  const names = signatureClasses(info);
   for (const m of info.body.matchAll(/\bnew\s+([A-Z\\][\w\\]*)/g)) names.add(m[1]);
   for (const m of info.body.matchAll(/(?<![\w\\$>])([A-Z\\][\w\\]*)::/g)) names.add(m[1]);
   return names;
@@ -106,6 +133,22 @@ export const phpRules = [
       const c = phpInfo(ctx, p);
       const out = [];
       for (const n of referencedClasses(c)) {
+        const fqcn = c.resolve(n);
+        const file = ctx.classFile(fqcn);
+        if (file && file !== p) out.push({ path: file, reason: `${kindOf(file)} ${shortName(fqcn)}`, sites: usesOf(ctx, p, n, 3) });
+      }
+      return out;
+    },
+  },
+  {
+    // Controllers have controller-deps, which also follows `new X` and `X::`.
+    name: 'php-deps',
+    applies: p => isPhp(p) && !isController(p),
+    find(p, ctx) {
+      const c = phpInfo(ctx, p);
+      if (!c.kind) return [];
+      const out = [];
+      for (const n of signatureClasses(c)) {
         const fqcn = c.resolve(n);
         const file = ctx.classFile(fqcn);
         if (file && file !== p) out.push({ path: file, reason: `${kindOf(file)} ${shortName(fqcn)}`, sites: usesOf(ctx, p, n, 3) });

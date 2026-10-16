@@ -64,6 +64,7 @@ CLI messages follow `--lang en|uk`, then the `CTXPACK_LANG` environment variable
 |---|---|
 | Controller routes | lines in `routes/*.php` that mention the controller |
 | Controller dependencies | FormRequest, Resource, Model, Policy, Service from signatures, `new X`, `X::` |
+| Class dependencies | for any other class (services, jobs, actions…): constructor and method parameter types and typed properties, including classes of the same namespace that need no `use` |
 | Inertia page | `Inertia::render('Users/Index')` → `resources/js/Pages/Users/Index.vue` |
 | Vue/JS imports | relative imports and `@/…` |
 | route() in Vue | `route('users.index')` → the routes file and its controller |

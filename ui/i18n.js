@@ -157,6 +157,7 @@ window.CTXPACK_I18N = {
 
     'rule.controller-routes': 'Controller routes',
     'rule.controller-deps': 'Controller dependencies',
+    'rule.php-deps': 'Class dependencies',
     'rule.inertia-page': 'Inertia page',
     'rule.vue-imports': 'Vue/JS imports',
     'rule.vue-routes': 'route() in Vue',
@@ -320,6 +321,7 @@ window.CTXPACK_I18N = {
 
     'rule.controller-routes': 'Route контролера',
     'rule.controller-deps': 'Залежності контролера',
+    'rule.php-deps': 'Залежності класів',
     'rule.inertia-page': 'Inertia-сторінка',
     'rule.vue-imports': 'Імпорти Vue/JS',
     'rule.vue-routes': 'route() у Vue',
