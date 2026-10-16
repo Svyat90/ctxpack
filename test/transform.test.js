@@ -84,6 +84,36 @@ test('stripAllComments: PHP comments go, strings and attributes stay', () => {
   ].join('\n'));
 });
 
+test('stripAllComments: a PHP heredoc with quotes does not swallow the code after it', () => {
+  const src = [
+    '<?php',
+    '$sql = <<<SQL',
+    "  SELECT * FROM users -- don't",
+    '  SQL;',
+    "$glob = 'app/*.php';",
+    'function keep() { return 1; } // trailing',
+    "$after = 'still here';",
+    '/* real */',
+    'echo $after;',
+  ].join('\n');
+  assert.equal(stripAllComments('a.php', src), [
+    '<?php',
+    '$sql = <<<SQL',
+    "  SELECT * FROM users -- don't",
+    '  SQL;',
+    "$glob = 'app/*.php';",
+    'function keep() { return 1; }',
+    "$after = 'still here';",
+    '',
+    'echo $after;',
+  ].join('\n'));
+});
+
+test('stripAllComments: an unclosed /* keeps the rest of the file', () => {
+  const src = "<?php\n$a = 1; /* never closed\n$b = 2;\n";
+  assert.equal(stripAllComments('a.php', src), src.replace(/[ \t]+$/gm, ''));
+});
+
 test('stripAllComments: Vue script, template and scoped SCSS', () => {
   const src = [
     '<script setup>',

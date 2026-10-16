@@ -84,16 +84,37 @@ function regexEnd(src, i) {
   return -1;
 }
 
+// End index (exclusive) of a PHP heredoc/nowdoc starting at `i`, or -1. The closing label may be
+// indented (PHP 7.3+), so it is any line that starts with the label.
+function heredocEnd(src, i) {
+  const open = /^<<<[ \t]*(["']?)([A-Za-z_]\w*)\1\r?\n/.exec(src.slice(i, i + 256));
+  if (!open) return -1;
+  const close = new RegExp(`\\n[ \\t]*${open[2]}\\b`, 'g');
+  close.lastIndex = i + open[0].length - 1;
+  const m = close.exec(src);
+  return m ? m.index + m[0].length : src.length;
+}
+
 // Removes /* */ and line comments while copying string (and, for JS, regex) literals untouched.
 // `lineComment`: true for //, 'ws' for // only after whitespace (SCSS: keeps url(http://…)), false for none.
 // `jsLiterals`: JS rules, where '…' and "…" end at a newline and /…/ can be a regex literal.
-function stripCLike(src, { lineComment = true, hash = false, quotes = '\'"`', jsLiterals = false } = {}) {
+// `heredoc`: PHP <<<ID … ID blocks are copied whole, so quotes inside them (SQL, "don't") cannot
+// shift what the scanner thinks is a string.
+function stripCLike(src, { lineComment = true, hash = false, quotes = '\'"`', jsLiterals = false, heredoc = false } = {}) {
   let out = '';
   let i = 0;
   const n = src.length;
   while (i < n) {
     const c = src[i];
     const d = src[i + 1];
+    if (heredoc && c === '<' && src.startsWith('<<<', i)) {
+      const end = heredocEnd(src, i);
+      if (end > 0) {
+        out += src.slice(i, end);
+        i = end;
+        continue;
+      }
+    }
     if (quotes.includes(c)) {
       const oneLine = jsLiterals && c !== '`';
       let j = i + 1;
@@ -105,7 +126,12 @@ function stripCLike(src, { lineComment = true, hash = false, quotes = '\'"`', js
     }
     if (c === '/' && d === '*') {
       const end = src.indexOf('*/', i + 2);
-      i = end < 0 ? n : end + 2;
+      // An unclosed "/*" means the scanner lost track of a literal: keep the rest rather than drop it.
+      if (end < 0) {
+        out += src.slice(i);
+        break;
+      }
+      i = end + 2;
       continue;
     }
     const slash = c === '/' && d === '/' && (lineComment === true || (lineComment === 'ws' && (i === 0 || /\s/.test(src[i - 1]))));
@@ -156,7 +182,7 @@ export function stripAllComments(path, src) {
   const ext = path.includes('.') ? path.split('.').pop().toLowerCase() : '';
   let out;
   if (path.endsWith('.blade.php')) out = stripMarkup(src.replace(/\{\{--[\s\S]*?--\}\}/g, ''));
-  else if (ext === 'php') out = stripCLike(src, { hash: true });
+  else if (ext === 'php') out = stripCLike(src, { hash: true, heredoc: true });
   else if (['js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx'].includes(ext)) out = stripCLike(src, { jsLiterals: true });
   else if (ext === 'vue') out = stripVue(src);
   else if (ext === 'css') out = stripCLike(src, { lineComment: false, quotes: '\'"' });
