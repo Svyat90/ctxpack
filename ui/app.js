@@ -18,6 +18,8 @@
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const fmt = t => (t >= 1000 ? (t / 1000).toFixed(1) + 'K' : String(t));
   const basename = p => p.split('/').pop();
+  // `p` must already be escaped.
+  const eyeBtn = p => `<button class="eye" type="button" data-act="peek" data-p="${p}" aria-label="Переглянути ${p}" title="Переглянути вміст"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>`;
 
   async function api(url, body, method) {
     const res = await fetch(url, {
@@ -138,7 +140,7 @@
         const tag = f.flag === 'deny' ? '<span class="tag deny">заборонено</span>'
           : f.flag === 'big' ? `<span class="tag ign">&gt; ${st.maxFileKb} КБ</span>`
           : `<span class="tok">${fmt(f.tokens)}</span>`;
-        out.push(`<div class="row${on ? ' is-sel' : ''}${f.flag ? ' off' : ''}" style="--d:${d}"><span class="chev none"></span><input type="checkbox" data-act="toggle" data-p="${p}" ${on ? 'checked' : ''} ${f.flag ? 'disabled' : ''} aria-label="${p}"><span class="name" title="${p}">${esc(k.name)}</span>${tag}</div>`);
+        out.push(`<div class="row${on ? ' is-sel' : ''}${f.flag ? ' off' : ''}" style="--d:${d}"><span class="chev none"></span><input type="checkbox" data-act="toggle" data-p="${p}" ${on ? 'checked' : ''} ${f.flag ? 'disabled' : ''} aria-label="${p}"><span class="name" title="${p}">${esc(k.name)}</span>${f.flag === 'deny' ? '' : eyeBtn(p)}${tag}</div>`);
         continue;
       }
       const open = !!vis || st.open.has(k.path);
@@ -170,7 +172,7 @@
     const lvl1 = list.filter(r => r.level === 1).length;
     body.innerHTML = `<ul class="sug scroll">${list.map(r => `<li>
         <span class="p" title="${esc(r.path)}">${esc(r.path)}</span>
-        <span class="add"><span class="tok">${fmt(r.tokens)}</span><button class="btn" type="button" data-act="addOne" data-p="${esc(r.path)}">Додати</button></span>
+        <span class="add">${eyeBtn(esc(r.path))}<span class="tok">${fmt(r.tokens)}</span><button class="btn" type="button" data-act="addOne" data-p="${esc(r.path)}">Додати</button></span>
         <span class="why"><span class="lvl">L${r.level}</span><em>${esc(RULE_LABELS[r.rule] || r.rule)}</em> · ${esc(r.reason)}${r.level > 1 ? ` · від ${esc(basename(r.from))}` : ''}</span>
       </li>`).join('')}</ul>
       <div class="sugfoot"><span>Разом ${fmt(sum)} токенів</span><span class="actions">${lvl1 && lvl1 < list.length ? `<button class="btn" type="button" data-act="addLevel1">Лише рівень 1 · ${lvl1}</button>` : ''}<button class="btn solid" type="button" data-act="addAll">Додати всі</button></span></div>`;
@@ -207,7 +209,7 @@
     const top = [...pv.files].sort((a, b2) => b2.tokens - a.tokens).slice(0, 5);
     const max = top.length ? top[0].tokens || 1 : 1;
     $('heavyWrap').hidden = !top.length;
-    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n" title="${esc(f.path)}"><i style="width:${(f.tokens / max) * 100}%"></i><span>${esc(f.path)}</span></div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="Прибрати ${esc(f.path)}">×</button></div>`).join('');
+    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n" title="Переглянути ${esc(f.path)}" data-act="peek" data-p="${esc(f.path)}"><i style="width:${(f.tokens / max) * 100}%"></i><span>${esc(f.path)}</span></div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="Прибрати ${esc(f.path)}">×</button></div>`).join('');
 
     const multi = pv.parts.length > 1;
     $('partsWrap').hidden = !multi;
@@ -433,6 +435,43 @@
     }
   }
 
+  // ---- file preview ----
+  function updatePeekToggle() {
+    const on = st.sel.has(st.peekPath);
+    $('peekToggle').textContent = on ? 'Прибрати з вибору' : 'Додати до вибору';
+    $('peekToggle').classList.toggle('solid', !on);
+  }
+
+  async function peek(path) {
+    const dlg = $('peek');
+    st.peekPath = path;
+    $('peekTitle').textContent = path;
+    $('peekMeta').textContent = 'Завантаження…';
+    $('peekWarn').innerHTML = '';
+    $('peekCode').textContent = '';
+    $('peekToggle').disabled = !pickable(path);
+    $('peekIde').href = `phpstorm://open?file=${encodeURIComponent(`${st.root}/${path}`)}&line=1`;
+    updatePeekToggle();
+    if (!dlg.open) dlg.showModal();
+    try {
+      const f = await api('/api/file', { path });
+      if (st.peekPath !== path) return;
+      $('peekMeta').textContent = `${f.lines} рядків · ~${fmt(f.tokens)} токенів${f.language ? ' · ' + f.language : ''}`;
+      const secretLines = new Set(f.secrets.map(s => s.line));
+      $('peekCode').innerHTML = f.content.split('\n')
+        .map((line, i) => `<span class="ln">${i + 1}</span>${secretLines.has(i + 1) ? `<mark>${esc(line)}</mark>` : esc(line)}`)
+        .join('\n');
+      const notes = [];
+      if (secretLines.size) notes.push(`<div class="warn-i">Можливі секрети в рядках: ${[...secretLines].join(', ')}</div>`);
+      if (f.truncated) notes.push('<div class="note">Файл великий: показано перші 400 КБ.</div>');
+      if (!f.exportable) notes.push(`<div class="note">Файл більший за ${st.maxFileKb} КБ, тому в експорт не потрапить.</div>`);
+      $('peekWarn').innerHTML = notes.join('');
+    } catch (err) {
+      $('peekMeta').textContent = '';
+      $('peekWarn').innerHTML = `<div class="warn-i bad">${esc(err.message)}</div>`;
+    }
+  }
+
   function toast(msg) {
     const t = $('toast');
     t.textContent = msg;
@@ -472,6 +511,21 @@
       }
       case 'drop':
         st.sel.delete(p);
+        break;
+      case 'peek':
+        peek(p);
+        return;
+      case 'peekClose':
+        $('peek').close();
+        return;
+      case 'peekToggle':
+        if (st.sel.has(st.peekPath)) {
+          st.sel.delete(st.peekPath);
+        } else {
+          st.sel.add(st.peekPath);
+          openAncestors([st.peekPath]);
+        }
+        updatePeekToggle();
         break;
       case 'clear':
         st.sel.clear();
@@ -534,6 +588,10 @@
     }
   });
 
+  // A click on the backdrop lands on the <dialog> itself (it has no padding).
+  $('peek').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.close();
+  });
   $('q').addEventListener('input', e => {
     st.q = e.target.value.trim();
     renderTree();

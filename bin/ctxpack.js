@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { startServer } from '../src/server.js';
+import { startServer, DEFAULT_PORT } from '../src/server.js';
 import { createApi } from '../src/api.js';
 import { CONFIG_NAME, STARTER } from '../src/config.js';
 
@@ -28,7 +28,7 @@ const HELP = `ctxpack: збирає вибрані файли проєкту в 
   --no-git              не використовувати git навіть у репозиторії
 
 Опції ui:
-  --port <число>        порт (за замовчуванням випадковий)
+  --port <число>        порт (за замовчуванням 3001)
   --no-open             не відкривати браузер
   --out <папка>         куди кнопка «Зберегти» пише файли
 
@@ -132,12 +132,16 @@ async function main() {
   if (cmd === 'init') return init(root);
   if (cmd === 'export') return exportCmd(root, args);
   if (cmd === 'ui') {
-    const { url } = await startServer({
-      root,
-      port: Number(args.port) || 0,
-      open: !args['no-open'],
-      outDir: path.resolve(args.out || 'ctxpack-out'),
-    });
+    const port = args.port === undefined ? DEFAULT_PORT : Number(args.port);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`Некоректний порт: ${args.port}`);
+    let started;
+    try {
+      started = await startServer({ root, port, open: !args['no-open'], outDir: path.resolve(args.out || 'ctxpack-out') });
+    } catch (err) {
+      if (err.code === 'EADDRINUSE') throw new Error(`Порт ${port} зайнятий іншою програмою або вже запущеним ctxpack (подивитися: lsof -nP -iTCP:${port} -sTCP:LISTEN). Звільніть його або вкажіть інший: --port ${port + 1}`);
+      throw err;
+    }
+    const { url } = started;
     log(`ctxpack: ${root}\nВідкрийте ${url}\nCtrl+C, щоб зупинити.`);
     return;
   }

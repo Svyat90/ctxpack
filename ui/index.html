@@ -79,6 +79,18 @@
     </section>
   </main>
 </div>
+<dialog id="peek" aria-labelledby="peekTitle">
+  <div class="pk-head">
+    <div class="pk-title"><span id="peekTitle" class="mono"></span><span id="peekMeta" class="tok"></span></div>
+    <div class="actions">
+      <button class="btn solid" type="button" data-act="peekToggle" id="peekToggle">Додати до вибору</button>
+      <a class="btn ghost" id="peekIde" href="#" title="Відкрити файл у PhpStorm">PhpStorm</a>
+      <button class="btn ghost" type="button" data-act="peekClose" aria-label="Закрити перегляд">×</button>
+    </div>
+  </div>
+  <div id="peekWarn"></div>
+  <div class="pk-body"><pre id="peekCode" class="code" tabindex="0"></pre></div>
+</dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="/app.js"></script>
 </body>

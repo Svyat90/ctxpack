@@ -3,10 +3,14 @@ import path from 'node:path';
 import { loadConfig, readUserConfig, saveUserConfig, resolveBudget, clampDepth } from './config.js';
 import { listFiles, changedFiles } from './scan.js';
 import { createContext, findRelated, RULE_NAMES } from './related/index.js';
-import { buildExport } from './export.js';
+import { buildExport, readText } from './export.js';
 import { matcher } from './match.js';
 import { orderPaths } from './order.js';
+import { scanSecrets } from './deny.js';
+import { estimateTokens } from './tokens.js';
+import { languageFor } from './render.js';
 
+const PEEK_LIMIT = 400 * 1024;
 const strings = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
 
 // Only the related settings the UI is allowed to change.
@@ -107,6 +111,25 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
       };
       if (body.save) result.saved = save(r.parts);
       return result;
+    },
+
+    // Read-only preview of one listed file. Denied files are never shown; oversized ones are truncated.
+    file(rel) {
+      const entry = typeof rel === 'string' && scan.files.find(f => f.path === rel);
+      if (!entry) throw new Error('Файл не знайдено серед файлів проєкту');
+      if (entry.flag === 'deny') throw new Error('Цей файл заборонений (секрети) і не показується');
+      const text = readText(root, rel);
+      const truncated = text.length > PEEK_LIMIT;
+      return {
+        path: rel,
+        content: truncated ? text.slice(0, PEEK_LIMIT) : text,
+        truncated,
+        tokens: estimateTokens(text, cfg.tokenCharsRatio),
+        lines: text.split('\n').length,
+        language: languageFor(rel),
+        exportable: !entry.flag,
+        secrets: scanSecrets(text),
+      };
     },
 
     changed() {

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -56,7 +57,9 @@ export function openBrowser(url) {
 }
 
 // Listens on 127.0.0.1 only. Every /api call needs the one-time token from the start URL.
-export function startServer({ root, port = 0, open = true, outDir }) {
+export const DEFAULT_PORT = 3001;
+
+export function startServer({ root, port = DEFAULT_PORT, open = true, outDir }) {
   const api = createApi(root, { outDir });
   const token = crypto.randomBytes(16).toString('hex');
   const routes = {
@@ -66,6 +69,7 @@ export function startServer({ root, port = 0, open = true, outDir }) {
     'POST /api/preview': b => api.preview(b),
     'POST /api/export': b => api.export(b),
     'POST /api/expand': b => api.expand(b.include),
+    'POST /api/file': b => api.file(b.path),
     'PUT /api/config': b => api.saveRelated(b.related),
     'POST /api/presets': b => api.savePreset(b.name, b.preset ?? null),
   };
@@ -91,12 +95,25 @@ export function startServer({ root, port = 0, open = true, outDir }) {
     }
   });
 
-  return new Promise((resolve, reject) => {
+  return portTaken(port).then(taken => new Promise((resolve, reject) => {
+    // macOS lets us bind 127.0.0.1:N even when another app listens on *:N, which would hijack its traffic.
+    if (taken) return reject(Object.assign(new Error(`Port ${port} is in use`), { code: 'EADDRINUSE' }));
     server.once('error', reject);
     server.listen(port, '127.0.0.1', () => {
       const url = `http://127.0.0.1:${server.address().port}/?t=${token}`;
       if (open) openBrowser(url);
       resolve({ server, url, token, api });
     });
+  }));
+}
+
+function portTaken(port) {
+  if (!port) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const socket = net.connect({ port, host: '127.0.0.1' });
+    const done = taken => { socket.destroy(); resolve(taken); };
+    socket.setTimeout(500, () => done(false));
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
   });
 }

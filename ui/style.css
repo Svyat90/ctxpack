@@ -149,6 +149,28 @@ textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; paddi
 .chk input { accent-color: var(--accent); margin: 0; width: 15px; height: 15px; }
 .opts .note { margin: 0; }
 .empty.err { color: var(--bad); }
+
+/* file preview */
+.eye { border: 0; background: none; padding: 2px 3px; color: var(--muted); display: inline-grid; place-items: center; border-radius: 4px; flex: none; opacity: 0; }
+.row:hover .eye, .sug li:hover .eye, .eye:focus-visible { opacity: 1; }
+@media (hover: none) { .eye { opacity: 1; } }
+.eye:hover { color: var(--accent); background: var(--accent-soft); }
+.hv .n[data-act] { cursor: pointer; }
+.hv .n[data-act]:hover span { text-decoration: underline; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+dialog#peek { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+  width: min(1100px, calc(100vw - 32px)); height: min(85vh, 900px); max-width: none; max-height: none; }
+dialog#peek[open] { display: flex; flex-direction: column; }
+dialog#peek::backdrop { background: rgb(0 0 0 / .45); }
+.pk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.pk-title { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pk-title .mono { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+#peekWarn:not(:empty) { padding: 10px 14px 0; display: flex; flex-direction: column; gap: 6px; }
+.pk-body { flex: 1; min-height: 0; overflow: auto; padding-block: 10px; }
+pre.code { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre; tab-size: 4; padding-right: 14px; }
+pre.code .ln { display: inline-block; width: 6ch; padding-right: 1.2ch; margin-right: 1.2ch; text-align: right; color: var(--muted); border-right: 1px solid var(--line); user-select: none; }
+pre.code mark { background: var(--warn-soft); color: var(--warn); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 pre.md { margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; max-height: 260px; overflow: auto; white-space: pre; }
 .pb.stack { display: flex; flex-direction: column; gap: 14px; }
