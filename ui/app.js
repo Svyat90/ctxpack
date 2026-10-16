@@ -141,7 +141,37 @@
       `<label for="r-${k}"><input type="checkbox" id="r-${k}" data-rule="${k}" ${st.rel.rules[k] !== false ? 'checked' : ''}>${esc(t('rule.' + k))}${st.depthByRule[k] ? ` <span class="lvl" title="${esc(t('depthFromConfig'))}">≤${st.depthByRule[k]}</span>` : ''}</label>`).join('');
   }
 
-  function renderTree() {
+  // Re-renders a scrolling list without moving what the user is looking at: the rows visible before
+  // (by key) are put back at the same height, even when rows above them appear or disappear.
+  // `scroller()` is looked up again after rendering, for lists whose scrolling element is replaced.
+  function keepPlace(scroller, selector, keyOf, render) {
+    const before = scroller();
+    if (!before) return render();
+    const top = before.getBoundingClientRect().top;
+    const scroll = before.scrollTop;
+    const seen = [];
+    for (const el of before.querySelectorAll(selector)) {
+      const r = el.getBoundingClientRect();
+      if (r.bottom <= top) continue;
+      if (r.top >= top + before.clientHeight) break;
+      seen.push([keyOf(el), r.top - top]);
+    }
+    render();
+    const after = scroller();
+    if (!after) return;
+    if (after !== before) after.scrollTop = scroll;
+    const els = [...after.querySelectorAll(selector)];
+    for (const [key, offset] of seen) {
+      const el = els.find(e => keyOf(e) === key);
+      if (!el) continue;
+      after.scrollTop += el.getBoundingClientRect().top - after.getBoundingClientRect().top - offset;
+      return;
+    }
+  }
+
+  const renderTree = () => keepPlace(() => $('tree'), '.row', el => el.querySelector('[data-p]')?.dataset.p, drawTree);
+
+  function drawTree() {
     const q = st.q.toLowerCase();
     let vis = null;
     if (q) {
@@ -182,7 +212,20 @@
     }
   }
 
+  const relKey = el => (el.matches('li') ? 'p:' + el.querySelector('.rp')?.dataset.p : 'g:' + el.querySelector('[data-g]')?.dataset.g);
+
   function renderRelated() {
+    keepPlace(() => $('relBody').querySelector('.sug'), '.sg-h, li', relKey, drawRelated);
+    // After adding a file with its "+", the focus goes to the "+" of the row that took its place.
+    const focus = st.relFocus;
+    if (!focus || !st.suggestions.length) return;
+    st.relFocus = null;
+    const items = [...$('relBody').querySelectorAll(`[data-act="relGroup"][data-g="${focus.group}"]`)][0]?.closest('.sg')?.querySelectorAll('li [data-act="addOne"]');
+    const btn = items?.length ? items[Math.min(focus.index, items.length - 1)] : $('relBody').querySelector('[data-act="addOne"]');
+    btn?.focus({ preventScroll: true });
+  }
+
+  function drawRelated() {
     const body = $('relBody');
     const list = st.suggestions;
     hidePop();
@@ -822,6 +865,7 @@
     }).join('\n');
     $('vCode').innerHTML = html;
     if (keepScroll) $('vScroll').scrollTop = scroll;
+    focusAnchor();
     view.marks = [...$('vCode').querySelectorAll('mark')];
     view.cur = -1;
     if (view.marks.length && !keepScroll) stepView(0, true);
@@ -887,6 +931,7 @@
   function showCutBtn(rows, x, y) {
     const items = rows ? cutTargets(rows[0], rows[1]) : [];
     view.pending = items;
+    view.pendingRows = rows;
     const btn = $('vCutBtn');
     if (!items.length) return hideCutBtn();
     const lines = items.reduce((s, it) => s + it.b - it.a + 1, 0);
@@ -900,6 +945,37 @@
   function hideCutBtn() {
     view.pending = [];
     $('vCutBtn').hidden = true;
+  }
+
+  // After a cut or a restore the view is re-rendered (the result even re-exported). The row now holding
+  // file line `line` of `path` (the cut's comment, or the first restored line) is put back at the height
+  // `row` was at, and marked as the active line.
+  function anchorView(path, line, row) {
+    const top = $('vScroll').getBoundingClientRect().top;
+    view.focus = { path, line, offset: row ? row.getBoundingClientRect().top - top : 40 };
+  }
+
+  function rowOfLine(path, line) {
+    const holds = r => r.cut ? r.cut[0] <= line && line <= r.cut[1] : r.marker ? r.marker.range[0] <= line && line <= r.marker.range[1] : false;
+    if (view.mode === 'file') return view.path === path ? view.rows.findIndex(r => holds(r) || r.n === line) : -1;
+    const b = view.blocks.find(bl => bl.path === path);
+    if (!b) return -1;
+    for (let j = b.start; j < b.end; j++) {
+      if (holds(view.rows[j]) || b.map[j - b.start] >= line) return j;
+    }
+    return -1;
+  }
+
+  function focusAnchor() {
+    const f = view.focus;
+    if (!f) return;
+    const i = rowOfLine(f.path, f.line);
+    if (i < 0) return;
+    view.focus = null;
+    const el = rowEl(i);
+    el.classList.add('active');
+    const box = $('vScroll');
+    box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - f.offset;
   }
 
   // ---- cuts state ----
@@ -1014,10 +1090,16 @@
         if (node) node.pick.forEach(l => (el.checked ? st.sel.add(l.path) : st.sel.delete(l.path)));
         break;
       }
-      case 'addOne':
+      case 'addOne': {
+        const li = el.closest('#relBody li');
+        if (li) {
+          const s = st.suggestions[Number(li.dataset.i)];
+          st.relFocus = { group: s?.group, index: [...li.parentElement.children].indexOf(li) };
+        }
         st.sel.add(p);
         openAncestors([p]);
         break;
+      }
       case 'relGroup':
         if (st.relClosed.has(el.dataset.g)) st.relClosed.delete(el.dataset.g); else st.relClosed.add(el.dataset.g);
         renderRelated();
@@ -1106,10 +1188,14 @@
         restoreFile(view.path);
         return;
       case 'uncut':
+        anchorView(p, Number(el.dataset.a), el.closest('[data-l]'));
         removeCut(p, Number(el.dataset.a), Number(el.dataset.b));
         return;
       case 'vCut':
-        if (view.pending.length) addCuts(view.pending);
+        if (view.pending.length) {
+          anchorView(view.pending[0].path, view.pending[0].a, rowEl(view.pendingRows[0]));
+          addCuts(view.pending);
+        }
         hideCutBtn();
         return;
       case 'vGo':

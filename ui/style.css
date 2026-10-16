@@ -244,6 +244,7 @@ dialog#viewer::backdrop { background: rgb(0 0 0 / .45); }
 pre.code .l.cut-row { display: inline-block; min-width: 100%; color: var(--muted); font-style: italic;
   background: repeating-linear-gradient(-45deg, var(--surface-2) 0 6px, transparent 6px 12px); }
 pre.code .marker, pre.code .marker * { color: var(--warn); font-style: italic; }
+pre.code .l.active { display: inline-block; min-width: 100%; background-color: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
 pre.code.numbered .ln { cursor: pointer; }
 pre.code.numbered .ln:hover { color: var(--accent); }
 .link-btn { border: 0; background: none; padding: 0; font: inherit; font-style: normal; color: var(--accent); text-decoration: underline; cursor: pointer; }
