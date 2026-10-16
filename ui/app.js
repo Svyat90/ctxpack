@@ -2,21 +2,23 @@
 
 (() => {
   const TOKEN = new URLSearchParams(location.search).get('t') || '';
-  const RULE_LABELS = {
-    'controller-routes': 'Route контролера',
-    'controller-deps': 'Залежності контролера',
-    'inertia-page': 'Inertia-сторінка',
-    'vue-imports': 'Імпорти Vue/JS',
-    'vue-routes': 'route() у Vue',
-    'php-inheritance': 'Наслідування PHP',
-    'model-extras': 'Міграції та фабрики',
-    'tests': 'Тести',
-  };
   const MAX_HITS = 5000;
+
+  // ---- language ----
+  const I18N = window.CTXPACK_I18N;
+  const LANG_KEY = 'ctxpack:lang';
+  let lang = (() => {
+    try {
+      const saved = localStorage.getItem(LANG_KEY);
+      if (saved === 'en' || saved === 'uk') return saved;
+    } catch {}
+    return (navigator.language || '').toLowerCase().startsWith('uk') ? 'uk' : 'en';
+  })();
+  const t = (key, params = {}) => String(I18N[lang][key] ?? I18N.en[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params[k] ?? ''));
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const fmt = t => (t >= 1000 ? (t / 1000).toFixed(1) + 'K' : String(t));
+  const fmt = n => (n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n));
   const basename = p => p.split('/').pop();
   // One-line path: file name first, then its folder, which is cut from the left when it does not fit.
   // The full path is in the tooltip; clicking the name opens the preview.
@@ -24,15 +26,15 @@
     const i = p.lastIndexOf('/');
     const name = p.slice(i + 1);
     const dir = i > 0 ? p.slice(0, i + 1) : '';
-    return `<span class="fp" title="${esc(p)}"><button type="button" class="fn" data-act="peek" data-p="${esc(p)}" aria-label="Переглянути ${esc(p)}">${esc(name)}</button>${dir ? `<span class="fd"><bdi>${esc(dir)}</bdi></span>` : ''}</span>`;
+    return `<span class="fp" title="${esc(p)}"><button type="button" class="fn" data-act="peek" data-p="${esc(p)}" aria-label="${esc(t('preview', { path: p }))}">${esc(name)}</button>${dir ? `<span class="fd"><bdi>${esc(dir)}</bdi></span>` : ''}</span>`;
   }
   // `p` must already be escaped.
-  const eyeBtn = p => `<button class="eye" type="button" data-act="peek" data-p="${p}" aria-label="Переглянути ${p}" title="Переглянути вміст"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>`;
+  const eyeBtn = p => `<button class="eye" type="button" data-act="peek" data-p="${p}" aria-label="${esc(t('preview', { path: p }))}" title="${esc(t('previewTitle'))}"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>`;
 
   async function api(url, body, method) {
     const res = await fetch(url, {
       method: method || (body ? 'POST' : 'GET'),
-      headers: { 'content-type': 'application/json', 'x-ctxpack-token': TOKEN },
+      headers: { 'content-type': 'application/json', 'x-ctxpack-token': TOKEN, 'x-ctxpack-lang': lang },
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
@@ -46,7 +48,7 @@
     budgets: {}, budget: 'small', split: false, maxFileKb: 200,
     rules: [], rel: { enabled: true, depth: 1, rules: {} }, depthByRule: {},
     presets: {}, suggestions: [], preview: null, exp: null,
-    secretAck: false, relSeq: 0, prevSeq: 0,
+    secretAck: false, relSeq: 0, prevSeq: 0, loaded: false,
   };
   const view = { mode: null, path: null, text: '', secretLines: new Set(), parts: [], part: 1, marks: [], cur: -1, capped: false };
   let storeKey = 'ctxpack';
@@ -93,22 +95,32 @@
   }
 
   // ---- rendering ----
+  // Static texts in index.html carry data-i18n* attributes.
+  function applyStatic() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
+    document.querySelectorAll('[data-act="lang"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === lang)));
+  }
+
   function renderHeader() {
-    $('proj').innerHTML = `<b>${esc(st.name)}</b> · ${esc(st.root)}${st.git ? '' : ' · без git'}`;
+    $('proj').innerHTML = `<b>${esc(st.name)}</b> · ${esc(st.root)}${st.git ? '' : ` · ${esc(t('noGit'))}`}`;
     $('changedBtn').disabled = !st.git;
-    $('changedBtn').title = st.git ? 'Додати змінені, staged і нові файли' : 'Це не git-репозиторій';
+    $('changedBtn').title = st.git ? t('changedTitle') : t('notGitRepo');
     document.title = `${st.name} · ctxpack`;
   }
 
   function renderBudgets() {
     $('budgets').innerHTML = Object.entries(st.budgets).map(([name, b]) =>
-      `<button type="button" data-act="budget" data-v="${esc(name)}" aria-pressed="${name === st.budget}">${b && b.limit ? `${fmt(b.limit)} · ${esc(name)}` : 'без ліміту'}</button>`).join('');
+      `<button type="button" data-act="budget" data-v="${esc(name)}" aria-pressed="${name === st.budget}">${b && b.limit ? `${fmt(b.limit)} · ${esc(name)}` : esc(t('unlimited'))}</button>`).join('');
   }
 
   function renderPresets() {
     const names = Object.keys(st.presets);
     const current = $('preset').value;
-    $('preset').innerHTML = `<option value="">${names.length ? 'Пресети…' : 'Пресетів ще немає'}</option>` +
+    $('preset').innerHTML = `<option value="">${esc(names.length ? t('presetsPh') : t('noPresets'))}</option>` +
       names.map(n => `<option value="${esc(n)}">${esc(n)} · ${(st.presets[n].include || []).length}</option>`).join('');
     $('preset').value = names.includes(current) ? current : '';
     $('delPreset').hidden = !$('preset').value;
@@ -118,7 +130,7 @@
     $('relOn').checked = st.rel.enabled;
     $('depth').value = String(st.rel.depth);
     $('rules').innerHTML = st.rules.map(k =>
-      `<label for="r-${k}"><input type="checkbox" id="r-${k}" data-rule="${k}" ${st.rel.rules[k] !== false ? 'checked' : ''}>${esc(RULE_LABELS[k] || k)}${st.depthByRule[k] ? ` <span class="lvl" title="Глибина з .ctxpack.json">≤${st.depthByRule[k]}</span>` : ''}</label>`).join('');
+      `<label for="r-${k}"><input type="checkbox" id="r-${k}" data-rule="${k}" ${st.rel.rules[k] !== false ? 'checked' : ''}>${esc(t('rule.' + k))}${st.depthByRule[k] ? ` <span class="lvl" title="${esc(t('depthFromConfig'))}">≤${st.depthByRule[k]}</span>` : ''}</label>`).join('');
   }
 
   function renderTree() {
@@ -134,9 +146,9 @@
     }
     const out = [];
     if (st.tree) rows(st.tree, 0, vis, out);
-    $('tree').innerHTML = out.join('') || `<div class="empty">${q ? 'Нічого не знайдено.' : 'У проєкті немає файлів для експорту.'}</div>`;
+    $('tree').innerHTML = out.join('') || `<div class="empty">${esc(q ? t('nothingFound') : t('noFiles'))}</div>`;
     $('tree').querySelectorAll('[data-indet]').forEach(i => { i.indeterminate = true; });
-    $('selCount').textContent = `${st.sel.size} вибрано`;
+    $('selCount').textContent = t('selected', { n: st.sel.size });
   }
 
   function rows(n, d, vis, out) {
@@ -146,8 +158,8 @@
       if (!k.kids) {
         const f = k.file;
         const on = st.sel.has(k.path);
-        const tag = f.flag === 'deny' ? '<span class="tag deny">заборонено</span>'
-          : f.flag === 'big' ? `<span class="tag ign">&gt; ${st.maxFileKb} КБ</span>`
+        const tag = f.flag === 'deny' ? `<span class="tag deny">${esc(t('blocked'))}</span>`
+          : f.flag === 'big' ? `<span class="tag ign">${esc(t('tooBig', { kb: st.maxFileKb }))}</span>`
           : `<span class="tok">${fmt(f.tokens)}</span>`;
         out.push(`<div class="row${on ? ' is-sel' : ''}${f.flag ? ' off' : ''}" style="--d:${d}"><span class="chev none"></span><input type="checkbox" data-act="toggle" data-p="${p}" ${on ? 'checked' : ''} ${f.flag ? 'disabled' : ''} aria-label="${p}"><span class="name" title="${p}">${esc(k.name)}</span>${f.flag === 'deny' ? '' : eyeBtn(p)}${tag}</div>`);
         continue;
@@ -156,7 +168,7 @@
       let c = 0;
       for (const l of k.pick) if (st.sel.has(l.path)) c++;
       const all = k.pick.length > 0 && c === k.pick.length;
-      out.push(`<div class="row" style="--d:${d}"><button class="chev" type="button" data-act="open" data-p="${p}" aria-expanded="${open}" aria-label="${open ? 'Згорнути' : 'Розгорнути'} ${esc(k.name)}"></button><input type="checkbox" data-act="toggleDir" data-p="${p}" ${all ? 'checked' : ''} ${c && !all ? 'data-indet="1"' : ''} ${k.pick.length ? '' : 'disabled'} aria-label="${p}/"><span class="name dir" data-act="open" data-p="${p}">${esc(k.name)}/</span>${k.pick.length ? `<span class="tok">${c ? c + '/' : ''}${k.pick.length} · ${fmt(k.tok)}</span>` : '<span class="tag ign">недоступно</span>'}</div>`);
+      out.push(`<div class="row" style="--d:${d}"><button class="chev" type="button" data-act="open" data-p="${p}" aria-expanded="${open}" aria-label="${esc(t(open ? 'collapseDir' : 'expandDir', { name: k.name }))}"></button><input type="checkbox" data-act="toggleDir" data-p="${p}" ${all ? 'checked' : ''} ${c && !all ? 'data-indet="1"' : ''} ${k.pick.length ? '' : 'disabled'} aria-label="${p}/"><span class="name dir" data-act="open" data-p="${p}">${esc(k.name)}/</span>${k.pick.length ? `<span class="tok">${c ? c + '/' : ''}${k.pick.length} · ${fmt(k.tok)}</span>` : `<span class="tag ign">${esc(t('unavailable'))}</span>`}</div>`);
       if (open) rows(k, d + 1, vis, out);
     }
   }
@@ -164,67 +176,80 @@
   function renderRelated() {
     const body = $('relBody');
     const list = st.suggestions;
-    $('relCount').textContent = st.rel.enabled ? `${list.length} пропозицій` : 'вимкнено';
+    $('relCount').textContent = st.rel.enabled ? t('suggestions', { n: list.length }) : t('off');
     if (!st.rel.enabled) {
-      body.innerHTML = '<div class="empty">Підбір вимкнено. Вибір повністю ручний.</div>';
+      body.innerHTML = `<div class="empty">${esc(t('relOffEmpty'))}</div>`;
       return;
     }
     if (!st.sel.size) {
-      body.innerHTML = '<div class="empty">Виберіть файл зліва, і тут з\'являться його route, залежності, Inertia-сторінки, імпорти, батьківські класи та тести.</div>';
+      body.innerHTML = `<div class="empty">${esc(t('relPickEmpty'))}</div>`;
       return;
     }
     if (!list.length) {
-      body.innerHTML = '<div class="empty">Для вибраних файлів пропозицій немає.</div>';
+      body.innerHTML = `<div class="empty">${esc(t('relNone'))}</div>`;
       return;
     }
     const sum = list.reduce((s, r) => s + r.tokens, 0);
     const lvl1 = list.filter(r => r.level === 1).length;
     body.innerHTML = `<ul class="sug scroll">${list.map(r => `<li>
         ${fileLabel(r.path)}
-        <span class="add"><span class="tok">${fmt(r.tokens)}</span><button class="btn add-btn" type="button" data-act="addOne" data-p="${esc(r.path)}" aria-label="Додати ${esc(r.path)}" title="Додати до вибору">+</button></span>
-        <span class="why"><span class="lvl">L${r.level}</span><em>${esc(RULE_LABELS[r.rule] || r.rule)}</em> · ${esc(r.reason)}${r.level > 1 ? ` · від ${esc(basename(r.from))}` : ''}</span>
+        <span class="add"><span class="tok">${fmt(r.tokens)}</span><button class="btn add-btn" type="button" data-act="addOne" data-p="${esc(r.path)}" aria-label="${esc(t('add', { path: r.path }))}" title="${esc(t('addToSel'))}">+</button></span>
+        <span class="why"><span class="lvl">L${r.level}</span><em>${esc(t('rule.' + r.rule))}</em> · ${esc(r.reason)}${r.level > 1 ? ` · ${esc(t('from', { name: basename(r.from) }))}` : ''}</span>
       </li>`).join('')}</ul>
-      <div class="sugfoot"><span>Разом ${fmt(sum)} токенів</span><span class="actions">${lvl1 && lvl1 < list.length ? `<button class="btn" type="button" data-act="addLevel1">Лише рівень 1 · ${lvl1}</button>` : ''}<button class="btn solid" type="button" data-act="addAll">Додати всі</button></span></div>`;
+      <div class="sugfoot"><span>${esc(t('totalTokens', { n: fmt(sum) }))}</span><span class="actions">${lvl1 && lvl1 < list.length ? `<button class="btn" type="button" data-act="addLevel1">${esc(t('level1Only', { n: lvl1 }))}</button>` : ''}<button class="btn solid" type="button" data-act="addAll">${esc(t('addAll'))}</button></span></div>`;
   }
 
   function renderOutput() {
     const pv = st.preview;
     if (!pv) {
-      $('meter').innerHTML = '<div class="note">Рахую…</div>';
+      $('meter').innerHTML = `<div class="note">${esc(t('counting'))}</div>`;
       return;
     }
     const b = st.budgets[st.budget] || {};
     const cap = pv.usable;
     let cls = 'ok';
-    let msg = 'Без ліміту. Бюджет не перевіряється.';
+    let msg = t('noLimitMsg');
     let pct = 0;
     if (cap) {
       const worst = Math.max(...pv.parts.map(p => p.tokens));
       pct = Math.min(100, (worst / cap) * 100);
       cls = worst > cap ? 'bad' : worst > cap * 0.85 ? 'warn' : 'ok';
-      if (worst > cap) msg = pv.parts.length > 1 ? 'Одна з частин більша за ліміт: є файл, що сам не вміщується.' : `Перевищено на ${fmt(pv.total - cap)}. Приберіть файли або увімкніть розбиття.`;
-      else msg = pv.parts.length > 1 ? `${pv.parts.length} частин, кожна вміщується в ліміт.` : `Лишилось ${fmt(cap - pv.total)} до межі.`;
+      if (worst > cap) msg = pv.parts.length > 1 ? t('partTooBig') : t('overBy', { n: fmt(pv.total - cap) });
+      else msg = pv.parts.length > 1 ? t('partsFit', { n: pv.parts.length }) : t('left', { n: fmt(cap - pv.total) });
     }
-    $('meter').innerHTML = `<div class="big"><strong>${fmt(pv.total)}</strong><span>${cap ? `із ${fmt(cap)} корисних · ліміт ${fmt(b.limit)} мінус резерв ${fmt(b.reserve || 0)}` : 'токенів (оцінка)'}</span></div>
+    const sub = cap ? t('ofUsable', { usable: fmt(cap), limit: fmt(b.limit), reserve: fmt(b.reserve || 0) }) : t('tokensEstimate');
+    $('meter').innerHTML = `<div class="big"><strong>${fmt(pv.total)}</strong><span>${esc(sub)}</span></div>
       ${cap ? `<div class="track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><div class="fill ${cls === 'ok' ? '' : cls}" style="width:${pct}%"></div></div>` : ''}
       <div class="state ${cls}">${esc(msg)}</div>`;
 
     const warns = pv.warnings;
     const shown = warns.slice(0, 8);
     $('warns').innerHTML = shown.map(w => `<div class="warn-i${w.level === 'over' ? ' bad' : ''}">${esc(w.text)}</div>`).join('') +
-      (warns.length > shown.length ? `<div class="note">…і ще ${warns.length - shown.length}</div>` : '') +
-      (!st.sel.size ? '<div class="note">Нічого не вибрано.</div>' : '');
+      (warns.length > shown.length ? `<div class="note">${esc(t('andMore', { n: warns.length - shown.length }))}</div>` : '') +
+      (!st.sel.size ? `<div class="note">${esc(t('nothingSelected'))}</div>` : '');
 
     const top = [...pv.files].sort((a, b2) => b2.tokens - a.tokens).slice(0, 5);
     const max = top.length ? top[0].tokens || 1 : 1;
     $('heavyWrap').hidden = !top.length;
-    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n"><i style="width:${(f.tokens / max) * 100}%"></i>${fileLabel(f.path)}</div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="Прибрати ${esc(f.path)}">×</button></div>`).join('');
+    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n"><i style="width:${(f.tokens / max) * 100}%"></i>${fileLabel(f.path)}</div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="${esc(t('remove', { path: f.path }))}">×</button></div>`).join('');
 
     const multi = pv.parts.length > 1;
     $('partsWrap').hidden = !multi;
     $('copyBtn').hidden = multi;
-    $('parts').innerHTML = multi ? pv.parts.map(p => `<button class="part" type="button" data-act="copyPart" data-i="${p.index}">Копіювати частину ${p.index} · ${fmt(p.tokens)} · ${p.files} файл.</button>`).join('') : '';
-    $('copyBtn').textContent = st.secretAck ? 'Є можливі секрети · копіювати все одно' : 'Копіювати MD';
+    $('parts').innerHTML = multi ? pv.parts.map(p => `<button class="part" type="button" data-act="copyPart" data-i="${p.index}">${esc(t('copyPartBtn', { i: p.index, tokens: fmt(p.tokens), files: p.files }))}</button>`).join('') : '';
+    $('copyBtn').textContent = st.secretAck ? t('copyAnyway') : t('copyMd');
+  }
+
+  function renderAll() {
+    applyStatic();
+    if (!st.loaded) return;
+    renderHeader();
+    renderBudgets();
+    renderPresets();
+    renderRules();
+    renderTree();
+    renderRelated();
+    renderOutput();
   }
 
   // ---- data refresh ----
@@ -286,9 +311,10 @@
   }
 
   // ---- export / clipboard ----
+  // Keyed by the request and the language, since warnings in the export come back translated.
   function exportNow() {
     const body = exportBody();
-    const key = JSON.stringify(body);
+    const key = lang + JSON.stringify(body);
     if (!st.exp || st.exp.key !== key) {
       const promise = api('/api/export', body);
       promise.catch(() => { if (st.exp && st.exp.key === key) st.exp = null; });
@@ -300,9 +326,9 @@
   // ClipboardItem with a promise keeps the click's user activation while the export is fetched.
   function writeClipboard(textPromise) {
     if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-      return navigator.clipboard.write([new ClipboardItem({ 'text/plain': textPromise.then(t => new Blob([t], { type: 'text/plain' })) })]);
+      return navigator.clipboard.write([new ClipboardItem({ 'text/plain': textPromise.then(s => new Blob([s], { type: 'text/plain' })) })]);
     }
-    return textPromise.then(t => navigator.clipboard.writeText(t));
+    return textPromise.then(s => navigator.clipboard.writeText(s));
   }
 
   async function copyPart(index) {
@@ -310,7 +336,7 @@
     if (hasSecrets && !st.secretAck) {
       st.secretAck = true;
       renderOutput();
-      toast('У вибраних файлах є можливі секрети (див. попередження). Натисніть ще раз, щоб скопіювати.');
+      toast(t('secretsConfirm'));
       return;
     }
     const result = exportNow();
@@ -323,7 +349,9 @@
       }
       const r = await result;
       const part = r.parts[index - 1];
-      toast(`Скопійовано${r.parts.length > 1 ? ` частину ${index} з ${r.parts.length}` : ''} · ~${fmt(part.tokens)} токенів`);
+      toast(r.parts.length > 1
+        ? t('copiedPart', { i: index, n: r.parts.length, tokens: fmt(part.tokens) })
+        : t('copied', { tokens: fmt(part.tokens) }));
     } catch (err) {
       try {
         $('vQ').value = '';
@@ -333,7 +361,7 @@
         const sel = getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
-        toast('Автоматично скопіювати не вдалося. Текст виділено, натисніть Cmd/Ctrl+C.');
+        toast(t('copyFallback'));
       } catch {
         toast(err.message);
       }
@@ -344,12 +372,11 @@
     try {
       const r = await api('/api/export', { ...exportBody(), save: true });
       const dir = r.saved[0].slice(0, r.saved[0].length - basename(r.saved[0]).length);
-      toast(`Збережено в ${dir}: ${r.saved.map(basename).join(', ')}`);
+      toast(t('savedTo', { dir, files: r.saved.map(basename).join(', ') }));
     } catch (err) {
       toast(err.message);
     }
   }
-
 
   // ---- presets & git ----
   async function applyPreset(name) {
@@ -368,13 +395,13 @@
     }
     openAncestors([...st.sel]);
     selectionChanged();
-    toast(r.missing.length ? `Пресет застосовано. Не знайдено: ${r.missing.join(', ')}` : `Пресет «${name}»: ${st.sel.size} файлів`);
+    toast(r.missing.length ? t('presetMissing', { list: r.missing.join(', ') }) : t('presetApplied', { name, n: st.sel.size }));
   }
 
   async function savePreset() {
     const name = $('presetName').value.trim();
-    if (!name) return toast('Вкажіть назву пресету');
-    if (!st.sel.size) return toast('Спершу виберіть файли');
+    if (!name) return toast(t('presetNameNeeded'));
+    if (!st.sel.size) return toast(t('selectFirst'));
     try {
       const r = await api('/api/presets', { name, preset: { include: [...st.sel], task: $('task').value, budget: st.budget } });
       st.presets = r.presets;
@@ -382,7 +409,7 @@
       renderPresets();
       $('preset').value = name;
       $('delPreset').hidden = false;
-      toast(`Пресет «${name}» збережено в .ctxpack.json`);
+      toast(t('presetSaved', { name }));
     } catch (err) {
       toast(err.message);
     }
@@ -393,8 +420,8 @@
     if (!name) return;
     if (btn.dataset.armed !== '1') {
       btn.dataset.armed = '1';
-      btn.textContent = 'Точно видалити?';
-      setTimeout(() => { btn.dataset.armed = ''; btn.textContent = 'Видалити'; }, 3000);
+      btn.textContent = t('deleteConfirm');
+      setTimeout(() => { btn.dataset.armed = ''; btn.textContent = t('delete'); }, 3000);
       return;
     }
     try {
@@ -402,7 +429,7 @@
       st.presets = r.presets;
       $('preset').value = '';
       renderPresets();
-      toast(`Пресет «${name}» видалено`);
+      toast(t('presetDeleted', { name }));
     } catch (err) {
       toast(err.message);
     }
@@ -411,12 +438,12 @@
   async function addChanged() {
     try {
       const r = await api('/api/changed');
-      if (!r.git) return toast('Це не git-репозиторій');
-      if (!r.files.length) return toast('Змінених файлів немає');
+      if (!r.git) return toast(t('notGitRepo'));
+      if (!r.files.length) return toast(t('noChanged'));
       r.files.forEach(p => st.sel.add(p));
       openAncestors(r.files);
       selectionChanged();
-      toast(`Додано змінені файли: ${r.files.length}`);
+      toast(t('changedAdded', { n: r.files.length }));
     } catch (err) {
       toast(err.message);
     }
@@ -429,7 +456,7 @@
     view.text = '';
     view.secretLines = new Set();
     $('vTitle').textContent = title;
-    $('vMeta').textContent = 'Завантаження…';
+    $('vMeta').textContent = t('loading');
     $('vWarn').innerHTML = '';
     $('vTabs').innerHTML = '';
     $('vToggle').hidden = $('vIde').hidden = mode !== 'file';
@@ -443,7 +470,7 @@
 
   function updatePeekToggle() {
     const on = st.sel.has(view.path);
-    $('vToggle').textContent = on ? 'Прибрати з вибору' : 'Додати до вибору';
+    $('vToggle').textContent = on ? t('removeFromSel') : t('addToSel');
     $('vToggle').classList.toggle('solid', !on);
   }
 
@@ -456,13 +483,13 @@
     try {
       const f = await api('/api/file', { path });
       if (view.mode !== 'file' || view.path !== path) return;
-      $('vMeta').textContent = `${f.lines} рядків · ~${fmt(f.tokens)} токенів${f.language ? ' · ' + f.language : ''}`;
+      $('vMeta').textContent = t('fileMeta', { lines: f.lines, tokens: fmt(f.tokens) }) + (f.language ? ' · ' + f.language : '');
       view.text = f.content;
       view.secretLines = new Set(f.secrets.map(s => s.line));
       const notes = [];
-      if (view.secretLines.size) notes.push(`<div class="warn-i">Можливі секрети в рядках: ${[...view.secretLines].join(', ')}</div>`);
-      if (f.truncated) notes.push('<div class="note">Файл великий: показано перші 400 КБ.</div>');
-      if (!f.exportable) notes.push(`<div class="note">Файл більший за ${st.maxFileKb} КБ, тому в експорт не потрапить.</div>`);
+      if (view.secretLines.size) notes.push(`<div class="warn-i">${esc(t('secretLines', { lines: [...view.secretLines].join(', ') }))}</div>`);
+      if (f.truncated) notes.push(`<div class="note">${esc(t('truncated'))}</div>`);
+      if (!f.exportable) notes.push(`<div class="note">${esc(t('notExportable', { kb: st.maxFileKb }))}</div>`);
       $('vWarn').innerHTML = notes.join('');
       renderView();
     } catch (err) {
@@ -472,7 +499,7 @@
   }
 
   async function openResult(index) {
-    openViewer('result', 'Результат .md');
+    openViewer('result', t('resultTitle'));
     const r = await exportNow();
     if (view.mode !== 'result') return;
     view.parts = r.parts;
@@ -483,10 +510,10 @@
     view.part = index;
     const part = view.parts[index - 1];
     const multi = view.parts.length > 1;
-    $('vMeta').textContent = `${part.files} файл. · ~${fmt(part.tokens)} токенів${multi ? ` · частина ${index} з ${view.parts.length}` : ''}`;
-    $('vTabs').innerHTML = multi ? view.parts.map(p => `<button class="part${p.index === index ? ' on' : ''}" type="button" data-act="vPart" data-i="${p.index}" aria-pressed="${p.index === index}">Частина ${p.index} · ${fmt(p.tokens)}</button>`).join('') : '';
+    $('vMeta').textContent = t('partMeta', { files: part.files, tokens: fmt(part.tokens) }) + (multi ? t('partOf', { i: index, n: view.parts.length }) : '');
+    $('vTabs').innerHTML = multi ? view.parts.map(p => `<button class="part${p.index === index ? ' on' : ''}" type="button" data-act="vPart" data-i="${p.index}" aria-pressed="${p.index === index}">${esc(t('partTab', { i: p.index, tokens: fmt(p.tokens) }))}</button>`).join('') : '';
     $('vCopy').dataset.i = String(index);
-    $('vCopy').textContent = multi ? `Копіювати частину ${index}` : 'Копіювати MD';
+    $('vCopy').textContent = multi ? t('copyPartN', { i: index }) : t('copyMd');
     view.text = part.markdown;
     renderView();
   }
@@ -537,17 +564,27 @@
   function updateViewCount() {
     const q = $('vQ').value;
     const total = view.marks.length;
-    $('vCount').textContent = !q || !view.text ? '' : total ? `${view.cur + 1} / ${total}${view.capped ? '+' : ''}` : 'Не знайдено';
+    $('vCount').textContent = !q || !view.text ? '' : total ? `${view.cur + 1} / ${total}${view.capped ? '+' : ''}` : t('notFound');
     $('vCount').classList.toggle('none', !!q && !!view.text && !total);
     $('vPrev').disabled = $('vNext').disabled = total < 2;
   }
 
   function toast(msg) {
-    const t = $('toast');
-    t.textContent = msg;
-    t.hidden = false;
+    const el = $('toast');
+    el.textContent = msg;
+    el.hidden = false;
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => { t.hidden = true; }, 3200);
+    toast.timer = setTimeout(() => { el.hidden = true; }, 3200);
+  }
+
+  function setLang(next) {
+    if (next === lang || !I18N[next]) return;
+    lang = next;
+    try { localStorage.setItem(LANG_KEY, lang); } catch {}
+    st.exp = null;
+    renderAll();
+    // Warnings in the preview come from the server, so fetch them again in the new language.
+    if (st.loaded) refresh({ related: false });
   }
 
   // ---- events ----
@@ -556,6 +593,9 @@
     if (!el) return;
     const p = el.dataset.p;
     switch (el.dataset.act) {
+      case 'lang':
+        setLang(el.dataset.v);
+        return;
       case 'open':
         if (st.open.has(p)) st.open.delete(p); else st.open.add(p);
         renderTree();
@@ -647,23 +687,23 @@
   });
 
   document.addEventListener('change', e => {
-    const t = e.target;
-    if (t.dataset.rule) {
-      st.rel.rules[t.dataset.rule] = t.checked;
+    const el = e.target;
+    if (el.dataset.rule) {
+      st.rel.rules[el.dataset.rule] = el.checked;
       relSettingsChanged();
-    } else if (t.id === 'relOn') {
-      st.rel.enabled = t.checked;
+    } else if (el.id === 'relOn') {
+      st.rel.enabled = el.checked;
       relSettingsChanged();
-    } else if (t.id === 'depth') {
-      st.rel.depth = Number(t.value);
+    } else if (el.id === 'depth') {
+      st.rel.depth = Number(el.value);
       relSettingsChanged();
-    } else if (t.id === 'split') {
-      st.split = t.checked;
+    } else if (el.id === 'split') {
+      st.split = el.checked;
       persist();
       refresh({ related: false });
-    } else if (t.id === 'preset') {
-      $('delPreset').hidden = !t.value;
-      if (t.value) applyPreset(t.value).catch(err => toast(err.message));
+    } else if (el.id === 'preset') {
+      $('delPreset').hidden = !el.value;
+      if (el.value) applyPreset(el.value).catch(err => toast(err.message));
     }
   });
 
@@ -724,7 +764,7 @@
     const pair = px[i] + px[i + 1];
     px[i] = Math.min(Math.max(px[i] + deltaPx, MIN_COL), pair - MIN_COL);
     px[i + 1] = pair - px[i];
-    cols = px.map(p => p / avail);
+    cols = px.map(v => v / avail);
     applyCols();
   }
   const availWidth = g => g.parentElement.clientWidth - 2 * g.offsetWidth;
@@ -769,6 +809,7 @@
 
   // ---- boot ----
   async function init() {
+    applyStatic();
     try {
       const data = await api('/api/tree');
       st.name = data.name;
@@ -795,17 +836,12 @@
       $('split').checked = st.split;
       openAncestors([...st.sel]);
 
-      renderHeader();
-      renderBudgets();
-      renderPresets();
-      renderRules();
-      renderTree();
-      renderRelated();
-      renderOutput();
+      st.loaded = true;
+      renderAll();
       refresh();
     } catch (err) {
-      $('proj').textContent = 'Помилка';
-      $('tree').innerHTML = `<div class="empty err">Не вдалося завантажити проєкт: ${esc(err.message)}</div>`;
+      $('proj').textContent = t('error');
+      $('tree').innerHTML = `<div class="empty err">${esc(t('loadFailed', { err: err.message }))}</div>`;
     }
   }
 

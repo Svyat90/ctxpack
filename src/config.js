@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { t, envLang } from './i18n.js';
 
 export const CONFIG_NAME = '.ctxpack.json';
 export const MAX_DEPTH = 5;
@@ -55,7 +56,7 @@ export function readUserConfig(root) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (err) {
-    throw new Error(`Не вдалося прочитати ${CONFIG_NAME}: ${err.message}`);
+    throw new Error(t(envLang(), 'configRead', { file: CONFIG_NAME, err: err.message }));
   }
 }
 
@@ -73,12 +74,12 @@ export function loadConfig(root) {
 }
 
 // "small" / "large" from config, "none", or a raw limit like "32k" / "50000".
-export function resolveBudget(cfg, spec) {
+export function resolveBudget(cfg, spec, lang = 'en') {
   if (spec === undefined || spec === null || spec === '' || spec === 'none' || spec === 'unlimited') return null;
   const named = cfg.budgets[spec];
   if (named) return named.limit ? { name: spec, limit: named.limit, reserve: named.reserve || 0 } : null;
   const m = /^(\d+(?:\.\d+)?)(k)?$/i.exec(String(spec));
-  if (!m) throw new Error(`Невідомий бюджет: ${spec}. Є: ${Object.keys(cfg.budgets).join(', ')} або число на кшталт 32k`);
+  if (!m) throw new Error(t(lang, 'unknownBudget', { spec, list: Object.keys(cfg.budgets).join(', ') }));
   const limit = Math.round(parseFloat(m[1]) * (m[2] ? 1000 : 1));
   return { name: String(spec), limit, reserve: Math.min(6000, Math.round(limit * 0.19)) };
 }

@@ -19,12 +19,13 @@ export function isDenied(rel) {
   return denyMatch(rel);
 }
 
+// Kinds are codes; their human names live in src/i18n.js ("kind.<code>").
 const SECRET_PATTERNS = [
-  ['приватний ключ', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
-  ['AWS access key', /\bAKIA[0-9A-Z]{16}\b/],
-  ['GitHub token', /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
-  ['Slack token', /\bxox[abprs]-[A-Za-z0-9-]{10,}/],
-  ['JWT', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
+  ['private-key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+  ['aws-key', /\bAKIA[0-9A-Z]{16}\b/],
+  ['github-token', /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
+  ['slack-token', /\bxox[abprs]-[A-Za-z0-9-]{10,}/],
+  ['jwt', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
 ];
 // `'password' => 'abc123secret'`, `apiKey: "..."`. Values must mix letters and digits and carry no `|`,
 // so Laravel validation rules like 'required|string|min:8' are not reported.
@@ -37,7 +38,7 @@ export function scanSecrets(text) {
     const known = SECRET_PATTERNS.find(([, re]) => re.test(line));
     if (known) return hits.push({ line: i + 1, kind: known[0] });
     const m = ASSIGNMENT.exec(line);
-    if (m && !m[1].includes('|') && /\d/.test(m[1]) && /[A-Za-z]/.test(m[1])) hits.push({ line: i + 1, kind: 'пароль або ключ у коді' });
+    if (m && !m[1].includes('|') && /\d/.test(m[1]) && /[A-Za-z]/.test(m[1])) hits.push({ line: i + 1, kind: 'assignment' });
   });
   return hits;
 }

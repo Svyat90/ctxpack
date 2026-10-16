@@ -5,8 +5,44 @@ import { spawnSync } from 'node:child_process';
 import { startServer, DEFAULT_PORT } from '../src/server.js';
 import { createApi } from '../src/api.js';
 import { CONFIG_NAME, STARTER } from '../src/config.js';
+import { t, envLang, normLang } from '../src/i18n.js';
 
-const HELP = `ctxpack: збирає вибрані файли проєкту в один Markdown для AI-чату
+const HELP = {
+  en: `ctxpack: packs selected project files into one Markdown file for an AI chat
+
+Usage:
+  ctxpack ui [path]                 web UI for picking files (default: current folder)
+  ctxpack export [path] [options]   generate Markdown without the UI
+  ctxpack init [path]               create ${CONFIG_NAME} with starter settings
+
+Export options:
+  --include <paths>     files, folders or globs, comma-separated; can repeat
+  --preset <name>       a preset from ${CONFIG_NAME}
+  --changed             add files changed in git
+  --related             add all related files
+  --depth <1-5>         related-file depth (with --related)
+  --budget <profile>    small, large, none or a number (32k)
+  --split               split into parts that fit the budget
+  --task <text>         task description at the top of the file
+  --out <folder>        where to save (default ./ctxpack-out)
+  --stdout              print Markdown to stdout instead of a file
+  --copy                copy the result to the clipboard
+  --no-git              do not use git even inside a repository
+
+UI options:
+  --port <number>       port (default ${DEFAULT_PORT})
+  --no-open             do not open the browser
+  --out <folder>        where the Save button writes files
+
+Common:
+  --lang <en|uk>        message language (default: CTXPACK_LANG or the system locale)
+
+Examples:
+  ctxpack ui ~/code/shop-app
+  ctxpack export --include app/Http/Controllers/UserController.php --related --depth 2 --split
+  ctxpack export --changed --related --copy --task "Add a role filter"`,
+
+  uk: `ctxpack: збирає вибрані файли проєкту в один Markdown для AI-чату
 
 Використання:
   ctxpack ui [шлях]                 веб-інтерфейс для вибору файлів (за замовчуванням поточна папка)
@@ -28,17 +64,30 @@ const HELP = `ctxpack: збирає вибрані файли проєкту в 
   --no-git              не використовувати git навіть у репозиторії
 
 Опції ui:
-  --port <число>        порт (за замовчуванням 3001)
+  --port <число>        порт (за замовчуванням ${DEFAULT_PORT})
   --no-open             не відкривати браузер
   --out <папка>         куди кнопка «Зберегти» пише файли
+
+Загальні:
+  --lang <en|uk>        мова повідомлень (за замовчуванням CTXPACK_LANG або мова системи)
 
 Приклади:
   ctxpack ui ~/code/shop-app
   ctxpack export --include app/Http/Controllers/UserController.php --related --depth 2 --split
-  ctxpack export --changed --related --copy --task "Додати фільтр за роллю"`;
+  ctxpack export --changed --related --copy --task "Додати фільтр за роллю"`,
+};
 
 const BOOL = new Set(['changed', 'related', 'split', 'stdout', 'copy', 'no-open', 'no-git', 'help']);
-const VALUE = new Set(['include', 'preset', 'depth', 'budget', 'task', 'out', 'port']);
+const VALUE = new Set(['include', 'preset', 'depth', 'budget', 'task', 'out', 'port', 'lang']);
+
+// --lang is read before the full parse so that parse errors are already translated.
+function peekLang(argv) {
+  const i = argv.findIndex(a => a === '--lang' || a.startsWith('--lang='));
+  if (i < 0) return envLang();
+  return normLang(argv[i].includes('=') ? argv[i].split('=')[1] : argv[i + 1]);
+}
+const lang = peekLang(process.argv.slice(2));
+const msg = (key, params) => t(lang, key, params);
 
 function parseArgs(argv) {
   const args = { _: [], include: [] };
@@ -49,17 +98,17 @@ function parseArgs(argv) {
     const eq = a.indexOf('=');
     const key = eq > 0 ? a.slice(2, eq) : a.slice(2);
     if (BOOL.has(key)) { args[key] = true; continue; }
-    if (!VALUE.has(key)) throw new Error(`Невідома опція --${key}. Див. ctxpack --help`);
+    if (!VALUE.has(key)) throw new Error(msg('cli.unknownOption', { key }));
     const val = eq > 0 ? a.slice(eq + 1) : argv[++i];
-    if (val === undefined) throw new Error(`--${key} потребує значення`);
+    if (val === undefined) throw new Error(msg('cli.needsValue', { key }));
     if (key === 'include') args.include.push(...val.split(',').map(s => s.trim()).filter(Boolean));
     else args[key] = val;
   }
   return args;
 }
 
-const log = msg => process.stderr.write(msg + '\n');
-const fmt = t => (t >= 1000 ? (t / 1000).toFixed(1) + 'K' : String(t));
+const log = text => process.stderr.write(text + '\n');
+const fmt = n => (n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n));
 
 function copyToClipboard(text) {
   const tries = process.platform === 'darwin' ? [['pbcopy', []]]
@@ -70,9 +119,9 @@ function copyToClipboard(text) {
 
 function init(root) {
   const file = path.join(root, CONFIG_NAME);
-  if (fs.existsSync(file)) throw new Error(`${file} вже існує`);
+  if (fs.existsSync(file)) throw new Error(msg('cli.configExists', { file }));
   fs.writeFileSync(file, JSON.stringify(STARTER, null, 2) + '\n');
-  log(`Створено ${file}`);
+  log(msg('cli.created', { file }));
 }
 
 function exportCmd(root, args) {
@@ -81,24 +130,24 @@ function exportCmd(root, args) {
   let preset = {};
   if (args.preset) {
     preset = cfg.presets[args.preset];
-    if (!preset) throw new Error(`Пресет «${args.preset}» не знайдено. Є: ${Object.keys(cfg.presets).join(', ') || 'жодного'}`);
+    if (!preset) throw new Error(msg('cli.presetMissing', { name: args.preset, list: Object.keys(cfg.presets).join(', ') || msg('cli.none') }));
   }
 
   const { files, missing } = api.expand([...(preset.include || []), ...args.include]);
-  for (const m of missing) log(`увага: нічого не знайдено для «${m}»`);
+  for (const inc of missing) log(msg('cli.noMatch', { inc }));
   const selected = new Set(files);
   if (args.changed) {
     const changed = api.changed();
-    if (!changed.git) log('увага: це не git-репозиторій, --changed пропущено');
+    if (!changed.git) log(msg('cli.notGit'));
     changed.files.forEach(p => selected.add(p));
   }
-  if (!selected.size) throw new Error('Нічого не вибрано. Вкажіть --include, --preset або --changed.');
+  if (!selected.size) throw new Error(msg('cli.nothingSelected'));
 
   if (args.related || preset.related) {
     const related = args.depth ? { depth: Number(args.depth) } : {};
     const { suggestions } = api.related({ selected: [...selected], related });
     suggestions.forEach(s => selected.add(s.path));
-    log(`Додано пов'язаних файлів: ${suggestions.length}`);
+    log(msg('cli.relatedAdded', { n: suggestions.length }));
   }
 
   const result = api.export({
@@ -107,45 +156,46 @@ function exportCmd(root, args) {
     budget: args.budget ?? preset.budget ?? cfg.defaultBudget,
     split: !!args.split,
     save: !args.stdout,
-  });
-  for (const w of result.warnings) log(`увага: ${w.text}`);
+  }, lang);
+  for (const w of result.warnings) log(msg('cli.warning', { text: w.text }));
 
   if (args.stdout) process.stdout.write(result.parts.map(p => p.markdown).join('\n\n'));
   else result.saved.forEach(f => log(f));
 
   const fileCount = result.parts.reduce((s, p) => s + p.files, 0);
-  log(`Файлів: ${fileCount} · ~${fmt(result.total)} токенів${result.usable ? ` · бюджет ${fmt(result.usable)}` : ''}${result.parts.length > 1 ? ` · частин: ${result.parts.length}` : ''}`);
+  log(msg('cli.summary', { files: fileCount, tokens: fmt(result.total) })
+    + (result.usable ? msg('cli.summaryBudget', { usable: fmt(result.usable) }) : '')
+    + (result.parts.length > 1 ? msg('cli.summaryParts', { n: result.parts.length }) : ''));
 
   if (args.copy) {
-    if (!copyToClipboard(result.parts[0].markdown)) log('увага: не вдалося скопіювати в буфер обміну');
-    else log(result.parts.length > 1 ? 'Скопійовано частину 1. Решта у файлах.' : 'Скопійовано в буфер обміну.');
+    if (!copyToClipboard(result.parts[0].markdown)) log(msg('cli.copyFailed'));
+    else log(result.parts.length > 1 ? msg('cli.copiedFirst') : msg('cli.copied'));
   }
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const [cmd = 'help', target = '.'] = args._;
-  if (args.help || cmd === 'help') return console.log(HELP);
+  if (args.help || cmd === 'help') return console.log(HELP[lang]);
   const root = path.resolve(target);
-  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`Папку не знайдено: ${root}`);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(msg('cli.noDir', { dir: root }));
 
   if (cmd === 'init') return init(root);
   if (cmd === 'export') return exportCmd(root, args);
   if (cmd === 'ui') {
     const port = args.port === undefined ? DEFAULT_PORT : Number(args.port);
-    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`Некоректний порт: ${args.port}`);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(msg('cli.badPort', { port: args.port }));
     let started;
     try {
       started = await startServer({ root, port, open: !args['no-open'], outDir: path.resolve(args.out || 'ctxpack-out') });
     } catch (err) {
-      if (err.code === 'EADDRINUSE') throw new Error(`Порт ${port} зайнятий іншою програмою або вже запущеним ctxpack (подивитися: lsof -nP -iTCP:${port} -sTCP:LISTEN). Звільніть його або вкажіть інший: --port ${port + 1}`);
+      if (err.code === 'EADDRINUSE') throw new Error(msg('cli.portBusy', { port, next: port + 1 }));
       throw err;
     }
-    const { url } = started;
-    log(`ctxpack: ${root}\nВідкрийте ${url}\nCtrl+C, щоб зупинити.`);
+    log(msg('cli.serving', { root, url: started.url }));
     return;
   }
-  throw new Error(`Невідома команда «${cmd}». Див. ctxpack --help`);
+  throw new Error(msg('cli.unknownCommand', { cmd }));
 }
 
 main().catch(err => {

@@ -1,39 +1,40 @@
 # ctxpack
 
-Збирає вибрані файли проєкту в один Markdown-файл (дерево + шляхи + повний вміст) для корпоративного AI-чату. Підбирає пов'язані файли для Laravel + Vue 3 + Inertia, рахує токени під ліміт і не пропускає секрети.
+**English** · [Українська](README.uk.md)
 
-Потрібен лише Node.js 20+, залежностей немає.
+Packs the files you pick from a project into one Markdown file (tree, paths and full contents) that you can paste into an AI chat. It suggests related files for Laravel + Vue 3 + Inertia projects, keeps the result within a token budget and never exports secrets.
 
-## Встановлення
+Requires Node.js 20+. No dependencies.
+
+## Install
 
 ```bash
 cd ~/code/ctxpack
-npm link          # робить команду `ctxpack` доступною глобально
+npm link          # makes the `ctxpack` command available everywhere
 ```
 
-Без `npm link` можна запускати як `node ~/code/ctxpack/bin/ctxpack.js …`.
+Without `npm link`, run it as `node ~/code/ctxpack/bin/ctxpack.js …`.
 
-## Веб-інтерфейс
+## Web UI
 
 ```bash
 ctxpack ui ~/code/my-laravel-app
 ```
 
-Відкриється браузер на `http://127.0.0.1:3001`. Інший порт: `--port 3002`. Якщо порт зайнятий, ctxpack не стартує й підкаже, як знайти, хто його тримає.
+The browser opens `http://127.0.0.1:3001`. Use `--port 3002` for another port. If the port is taken, ctxpack does not start and tells you how to find what holds it.
 
-Зліва дерево файлів, посередині пропозиції пов'язаних файлів, справа токен-бюджет, задача, попередження і кнопки «Копіювати MD» / «Зберегти у файл».
+The file tree is on the left, related-file suggestions in the middle, and the token budget, task, warnings and the **Copy MD** / **Save to file** buttons on the right.
 
-Ширину панелей можна змінити, перетягнувши смугу між ними (або стрілками ← → на смузі у фокусі). Подвійний клік по смузі скидає ширину.
+- **EN / УКР** in the header switches the interface language. The choice is remembered in the browser.
+- Drag the strip between panels to resize them (or focus it and use ← →). Double-click the strip to reset.
+- **View result** opens the generated Markdown in a large window with text search: Enter / Shift+Enter or ↑ ↓ move between matches, Cmd/Ctrl+F focuses the search box. Split results get a tab per part.
+- The **eye** button next to a file (shown on hover) opens its **preview** in the same window with the same search, plus line numbers, highlighted possible secrets, **Add to selection** and **PhpStorm**. Clicking a file in **Heaviest files** does the same. Blocked files (`.env` and similar) are never shown.
+- The **32K · small** profile gives 26K usable tokens (6K stay free for your prompt and the answer). **no limit** is for an agent without a limit.
+- **Split to fit the limit** divides the result into parts made of whole files. Each part has its own copy button.
+- **Changed in git** adds modified, staged and new files.
+- **Presets** save the current selection to the project's `.ctxpack.json`.
 
-- «Переглянути результат» відкриває готовий MD у великому модальному вікні з пошуком по тексту: Enter / Shift+Enter або ↑ ↓ між збігами, Cmd/Ctrl+F фокусує пошук. При розбитті на частини між ними перемикаються вкладки.
-- Кнопка-«око» біля файлу (з'являється при наведенні) відкриває **перегляд вмісту** у тому ж вікні, що й результат, з тим самим пошуком по тексту: номери рядків, підсвічені можливі секрети, кнопки «Додати до вибору» і «PhpStorm». Те саме відкривається кліком по файлу в списку «Найважчі файли». Заборонені файли (`.env` тощо) не показуються.
-
-- Профіль **32K · small** рахує корисний ліміт 26K (6K залишаються під ваш промпт і відповідь). **Без ліміту** для агента без обмежень.
-- **Розбивати під ліміт** ділить результат на частини цілими файлами. Кожна частина копіюється окремою кнопкою.
-- **Змінені в git** додає змінені, staged і нові файли.
-- **Пресети** зберігають поточний вибір у `.ctxpack.json` проєкту.
-
-Сервер слухає лише `127.0.0.1` і приймає запити тільки з одноразовим токеном з посилання.
+The server listens on `127.0.0.1` only and accepts requests only with the one-time token from the link it prints.
 
 ## CLI
 
@@ -42,27 +43,29 @@ ctxpack export ~/code/app --include app/Http/Controllers/UserController.php --re
 ctxpack export ~/code/app --changed --related --split --budget small
 ctxpack export ~/code/app --preset "users feature" --copy
 ctxpack export ~/code/app --include "app/Services/**/*.php" --stdout > context.md
-ctxpack init ~/code/app     # створити .ctxpack.json
+ctxpack init ~/code/app     # create .ctxpack.json
 ```
 
-Результат пишеться в `./ctxpack-out/<проєкт>-context.md` (або `.part1.md`, `.part2.md`, …). Повний список опцій: `ctxpack --help`.
+The result goes to `./ctxpack-out/<project>-context.md` (or `.part1.md`, `.part2.md`, …). All options: `ctxpack --help`.
 
-## Пов'язані файли
+CLI messages follow `--lang en|uk`, then the `CTXPACK_LANG` environment variable, then the system locale.
 
-| Правило | Що знаходить |
+## Related files
+
+| Rule | What it finds |
 |---|---|
-| Route контролера | рядки в `routes/*.php`, де згадано контролер |
-| Залежності контролера | FormRequest, Resource, Model, Policy, Service з сигнатур, `new X`, `X::` |
-| Inertia-сторінка | `Inertia::render('Users/Index')` → `resources/js/Pages/Users/Index.vue` |
-| Імпорти Vue/JS | відносні імпорти та `@/…` |
-| route() у Vue | `route('users.index')` → файл маршрутів і контролер |
-| Наслідування PHP | `extends`, `implements`, трейти |
-| Міграції та фабрики | міграції таблиці моделі, Factory, Seeder, Policy, Observer |
-| Тести | тести, що згадують клас або компонент |
+| Controller routes | lines in `routes/*.php` that mention the controller |
+| Controller dependencies | FormRequest, Resource, Model, Policy, Service from signatures, `new X`, `X::` |
+| Inertia page | `Inertia::render('Users/Index')` → `resources/js/Pages/Users/Index.vue` |
+| Vue/JS imports | relative imports and `@/…` |
+| route() in Vue | `route('users.index')` → the routes file and its controller |
+| PHP inheritance | `extends`, `implements`, traits |
+| Migrations & factories | migrations of the model's table, Factory, Seeder, Policy, Observer |
+| Tests | tests that mention the class or component |
 
-Файли з `vendor/` (ядро Laravel, composer-пакети) і `node_modules/` (npm-пакети) **ніколи** не пропонуються. PHP-класи шукаються лише через PSR-4 вашого `composer.json`, а голі npm-імпорти (`vue`, `@inertiajs/vue3`) пропускаються.
+Files from `vendor/` (the Laravel framework, composer packages) and `node_modules/` (npm packages) are **never** suggested. PHP classes resolve only through the PSR-4 roots in your `composer.json`, and bare npm imports (`vue`, `@inertiajs/vue3`) are skipped.
 
-Глибина 1–5 задається в інтерфейсі. В `.ctxpack.json` її можна задати окремо для правил:
+Set the depth (1–5) in the UI. In `.ctxpack.json` you can also set it per rule:
 
 ```json
 {
@@ -74,19 +77,19 @@ ctxpack init ~/code/app     # створити .ctxpack.json
 }
 ```
 
-## Налаштування `.ctxpack.json`
+## `.ctxpack.json` settings
 
-Усі поля необов'язкові:
+Every field is optional:
 
-- `exclude`: додаткові виключення (додаються до стандартних `vendor`, `node_modules`, `public/build`, lock-файлів…).
-- `maxFileKb` (200): більші файли видно в дереві, але експортувати їх не можна.
-- `tokenCharsRatio` (3.2): символів на токен. Для калібрування порівняйте лічильник з тим, що показує ваш AI-інтерфейс, і змініть значення.
-- `budgets`: профілі `{ "limit": 32000, "reserve": 6000 }`; `limit: null` означає без ліміту.
-- `related.aliases` (`{"@": "resources/js"}`): аліаси імпортів.
+- `exclude`: extra exclusions, added to the defaults (`vendor`, `node_modules`, `public/build`, lock files…).
+- `maxFileKb` (200): larger files are listed in the tree but cannot be exported.
+- `tokenCharsRatio` (3.2): characters per token. To calibrate, compare the counter with what your AI interface shows and adjust.
+- `budgets`: profiles like `{ "limit": 32000, "reserve": 6000 }`; `limit: null` means no limit.
+- `related.aliases` (`{"@": "resources/js"}`): import aliases.
 
-Секрети не експортуються ніколи: `.env*` (крім `.env.example`), ключі, сертифікати, `storage/`, `auth.json`. У вибраних файлах шукаються схожі на секрети рядки, і перед копіюванням інтерфейс просить підтвердження.
+Secrets are never exported: `.env*` (except `.env.example`), keys, certificates, `storage/`, `auth.json`. Selected files are also scanned for lines that look like secrets, and the UI asks for confirmation before copying them.
 
-## Тести
+## Tests
 
 ```bash
 npm test

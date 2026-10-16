@@ -6,12 +6,14 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createApi } from './api.js';
+import { t, normLang } from './i18n.js';
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'ui');
 const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
+  '/i18n.js': ['i18n.js', 'text/javascript; charset=utf-8'],
 };
 const MAX_BODY = 5 * 1024 * 1024;
 
@@ -20,14 +22,14 @@ function send(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-function readJson(req) {
+function readJson(req, lang) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     req.on('data', chunk => {
       size += chunk.length;
       if (size > MAX_BODY) {
-        reject(Object.assign(new Error('Запит завеликий'), { status: 413 }));
+        reject(Object.assign(new Error(t(lang, 'bodyTooBig')), { status: 413 }));
         req.destroy();
         return;
       }
@@ -37,7 +39,7 @@ function readJson(req) {
       try {
         resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
       } catch {
-        reject(new Error('Некоректний JSON'));
+        reject(new Error(t(lang, 'badJson')));
       }
     });
     req.on('error', reject);
@@ -66,12 +68,12 @@ export function startServer({ root, port = DEFAULT_PORT, open = true, outDir }) 
     'GET /api/tree': () => api.tree(),
     'GET /api/changed': () => api.changed(),
     'POST /api/related': b => api.related(b),
-    'POST /api/preview': b => api.preview(b),
-    'POST /api/export': b => api.export(b),
+    'POST /api/preview': (b, lang) => api.preview(b, lang),
+    'POST /api/export': (b, lang) => api.export(b, lang),
     'POST /api/expand': b => api.expand(b.include),
-    'POST /api/file': b => api.file(b.path),
+    'POST /api/file': (b, lang) => api.file(b.path, lang),
     'PUT /api/config': b => api.saveRelated(b.related),
-    'POST /api/presets': b => api.savePreset(b.name, b.preset ?? null),
+    'POST /api/presets': (b, lang) => api.savePreset(b.name, b.preset ?? null, lang),
   };
 
   const server = http.createServer(async (req, res) => {
@@ -87,9 +89,11 @@ export function startServer({ root, port = DEFAULT_PORT, open = true, outDir }) 
       }
       const handler = routes[`${req.method} ${url.pathname}`];
       if (!handler) return send(res, 404, { error: 'Not found' });
-      if (!sameToken(req.headers['x-ctxpack-token'], token)) return send(res, 401, { error: 'Невірний токен сесії. Відкрийте посилання з терміналу ще раз.' });
-      const body = req.method === 'GET' ? {} : await readJson(req);
-      send(res, 200, handler(body));
+      // The UI sends its language so warnings and errors come back translated.
+      const lang = normLang(req.headers['x-ctxpack-lang']);
+      if (!sameToken(req.headers['x-ctxpack-token'], token)) return send(res, 401, { error: t(lang, 'badToken') });
+      const body = req.method === 'GET' ? {} : await readJson(req, lang);
+      send(res, 200, handler(body, lang));
     } catch (err) {
       send(res, err.status || 400, { error: err.message });
     }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,93 +7,99 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<!-- Texts come from i18n.js: data-i18n (text), data-i18n-ph (placeholder), data-i18n-aria, data-i18n-title -->
 <div class="app">
   <header class="bar">
     <div class="brand"><i></i>ctxpack</div>
-    <div class="proj" id="proj">Завантаження…</div>
+    <div class="proj" id="proj" data-i18n="loading">Loading…</div>
     <div class="grow"></div>
-    <div class="seg" role="group" aria-label="Профіль бюджету" id="budgets"></div>
+    <div class="seg" role="group" data-i18n-aria="budgetProfile" id="budgets"></div>
+    <div class="seg" role="group" data-i18n-aria="language" id="langs">
+      <button type="button" data-act="lang" data-v="en" aria-pressed="false">EN</button>
+      <button type="button" data-act="lang" data-v="uk" aria-pressed="false">УКР</button>
+    </div>
   </header>
 
   <main class="grid">
-    <section class="panel" aria-label="Файли">
-      <div class="ph"><h2>Файли</h2><span class="count" id="selCount"></span></div>
+    <section class="panel" data-i18n-aria="panelFiles">
+      <div class="ph"><h2 data-i18n="panelFiles">Files</h2><span class="count" id="selCount"></span></div>
       <div class="tools">
-        <input type="search" id="q" placeholder="Пошук за шляхом…" aria-label="Пошук файлів">
-        <button class="chip" type="button" data-act="changed" id="changedBtn">Змінені в git</button>
-        <button class="chip" type="button" data-act="clear">Очистити</button>
-        <button class="chip" type="button" data-act="collapse">Згорнути</button>
+        <input type="search" id="q" data-i18n-ph="searchPath" data-i18n-aria="searchFiles">
+        <button class="chip" type="button" data-act="changed" id="changedBtn" data-i18n="changed">Changed in git</button>
+        <button class="chip" type="button" data-act="clear" data-i18n="clear">Clear</button>
+        <button class="chip" type="button" data-act="collapse" data-i18n="collapse">Collapse</button>
       </div>
       <div class="tools">
-        <select id="preset" aria-label="Пресет"><option value="">Пресети…</option></select>
-        <input type="text" id="presetName" placeholder="Назва нового пресету" aria-label="Назва нового пресету">
-        <button class="chip" type="button" data-act="savePreset">Зберегти</button>
-        <button class="chip" type="button" data-act="deletePreset" id="delPreset" hidden>Видалити</button>
+        <select id="preset" data-i18n-aria="preset"><option value=""></option></select>
+        <input type="text" id="presetName" data-i18n-ph="presetNamePh" data-i18n-aria="presetNamePh">
+        <button class="chip" type="button" data-act="savePreset" data-i18n="save">Save</button>
+        <button class="chip" type="button" data-act="deletePreset" id="delPreset" data-i18n="delete" hidden>Delete</button>
       </div>
       <div id="tree" class="scroll"></div>
     </section>
 
-    <div class="gutter" data-i="0" role="separator" aria-orientation="vertical" aria-label="Межа між «Файли» і «Пов'язані файли»" tabindex="0" title="Потягніть, щоб змінити ширину. Подвійний клік скидає."></div>
+    <div class="gutter" data-i="0" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-aria="gutter0" data-i18n-title="gutterTitle"></div>
 
-    <section class="panel" aria-label="Пов'язані файли">
-      <div class="ph"><h2>Пов'язані файли</h2><span class="count" id="relCount"></span></div>
+    <section class="panel" data-i18n-aria="panelRelated">
+      <div class="ph"><h2 data-i18n="panelRelated">Related files</h2><span class="count" id="relCount"></span></div>
       <div class="pb opts">
         <div class="line">
-          <label class="switch" for="relOn"><input type="checkbox" id="relOn" checked> Підбирати пов'язані</label>
-          <label class="switch" for="depth">Глибина
+          <label class="switch" for="relOn"><input type="checkbox" id="relOn" checked> <span data-i18n="relOn">Suggest related files</span></label>
+          <label class="switch" for="depth"><span data-i18n="depth">Depth</span>
             <select id="depth">
-              <option value="1">1 · прямі</option>
+              <option value="1" data-i18n="depthDirect">1 · direct</option>
               <option value="2">2</option>
               <option value="3">3</option>
               <option value="4">4</option>
-              <option value="5">5 · максимум</option>
+              <option value="5" data-i18n="depthMax">5 · maximum</option>
             </select>
           </label>
         </div>
         <div class="rules" id="rules"></div>
-        <p class="note">Файли з vendor/ і node_modules/ ніколи не пропонуються.</p>
+        <p class="note" data-i18n="noPackages"></p>
       </div>
       <div id="relBody"></div>
     </section>
 
-    <div class="gutter" data-i="1" role="separator" aria-orientation="vertical" aria-label="Межа між «Пов'язані файли» і «Результат»" tabindex="0" title="Потягніть, щоб змінити ширину. Подвійний клік скидає."></div>
+    <div class="gutter" data-i="1" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-aria="gutter1" data-i18n-title="gutterTitle"></div>
 
-    <section class="panel" aria-label="Результат">
-      <div class="ph"><h2>Результат</h2><span class="count">.md</span></div>
+    <section class="panel" data-i18n-aria="panelResult">
+      <div class="ph"><h2 data-i18n="panelResult">Result</h2><span class="count">.md</span></div>
       <div class="pb stack">
         <div class="meter" id="meter"></div>
         <div>
-          <label class="lbl" for="task">Задача (потрапить на початок файлу)</label>
-          <textarea id="task" placeholder="Що треба зробити? Наприклад: додати фільтр за роллю у список користувачів"></textarea>
+          <label class="lbl" for="task" data-i18n="taskLabel"></label>
+          <textarea id="task" data-i18n-ph="taskPh"></textarea>
         </div>
         <div class="warns" id="warns"></div>
-        <div id="heavyWrap" hidden><div class="lbl">Найважчі файли</div><div class="heavy" id="heavy"></div></div>
-        <div id="partsWrap" hidden><div class="lbl">Частини: копіюйте по черзі</div><div class="parts" id="parts"></div></div>
+        <div id="heavyWrap" hidden><div class="lbl" data-i18n="heaviest"></div><div class="heavy" id="heavy"></div></div>
+        <div id="partsWrap" hidden><div class="lbl" data-i18n="partsLabel"></div><div class="parts" id="parts"></div></div>
         <div class="actions">
-          <button class="btn solid" type="button" data-act="copy" id="copyBtn">Копіювати MD</button>
-          <button class="btn ghost" type="button" data-act="save">Зберегти у файл</button>
-          <button class="btn ghost" type="button" data-act="openResult">Переглянути результат</button>
-          <label class="chk" for="split"><input type="checkbox" id="split"> Розбивати під ліміт</label>
+          <button class="btn solid" type="button" data-act="copy" id="copyBtn">Copy MD</button>
+          <button class="btn ghost" type="button" data-act="save" data-i18n="saveFile">Save to file</button>
+          <button class="btn ghost" type="button" data-act="openResult" data-i18n="viewResult">View result</button>
+          <label class="chk" for="split"><input type="checkbox" id="split"> <span data-i18n="split">Split to fit the limit</span></label>
         </div>
       </div>
     </section>
   </main>
 </div>
+
 <!-- One viewer for both a single file and the generated Markdown -->
 <dialog id="viewer" aria-labelledby="vTitle">
   <div class="pk-head">
     <div class="pk-title"><span id="vTitle" class="mono"></span><span id="vMeta" class="tok"></span></div>
     <div class="search">
-      <input type="search" id="vQ" placeholder="Пошук у тексті…" aria-label="Пошук у тексті" autocomplete="off">
+      <input type="search" id="vQ" data-i18n-ph="searchText" data-i18n-aria="searchTextAria" autocomplete="off">
       <span id="vCount" class="tok" aria-live="polite"></span>
-      <button class="btn ghost" type="button" data-act="vPrev" id="vPrev" aria-label="Попередній збіг" title="Попередній (Shift+Enter)">↑</button>
-      <button class="btn ghost" type="button" data-act="vNext" id="vNext" aria-label="Наступний збіг" title="Наступний (Enter)">↓</button>
+      <button class="btn ghost" type="button" data-act="vPrev" id="vPrev" data-i18n-aria="prevMatch" data-i18n-title="prevMatch">↑</button>
+      <button class="btn ghost" type="button" data-act="vNext" id="vNext" data-i18n-aria="nextMatch" data-i18n-title="nextMatch">↓</button>
     </div>
     <div class="actions">
-      <button class="btn solid" type="button" data-act="vToggle" id="vToggle">Додати до вибору</button>
-      <a class="btn ghost" id="vIde" href="#" title="Відкрити файл у PhpStorm">PhpStorm</a>
-      <button class="btn solid" type="button" data-act="copyPart" data-i="1" id="vCopy">Копіювати MD</button>
-      <button class="btn ghost" type="button" data-act="vClose" aria-label="Закрити">×</button>
+      <button class="btn solid" type="button" data-act="vToggle" id="vToggle"></button>
+      <a class="btn ghost" id="vIde" href="#" data-i18n-title="openIde">PhpStorm</a>
+      <button class="btn solid" type="button" data-act="copyPart" data-i="1" id="vCopy"></button>
+      <button class="btn ghost" type="button" data-act="vClose" data-i18n-aria="close">×</button>
     </div>
   </div>
   <div id="vWarn"></div>
@@ -101,6 +107,7 @@
   <div class="pk-body"><pre id="vCode" class="code" tabindex="0"></pre></div>
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
+<script src="/i18n.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

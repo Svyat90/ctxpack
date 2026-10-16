@@ -4,13 +4,14 @@ import { orderPaths } from './order.js';
 import { renderMarkdown } from './render.js';
 import { estimateTokens, packParts } from './tokens.js';
 import { scanSecrets } from './deny.js';
+import { t } from './i18n.js';
 
 export function readText(root, rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
 }
 
 // entries: scan result files. budget: { limit, reserve } or null (no limit).
-export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, now = new Date() }) {
+export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, now = new Date(), lang = 'en' }) {
   const ratio = cfg.tokenCharsRatio;
   const warnings = [];
   const byPath = new Map(entries.map(e => [e.path, e]));
@@ -22,8 +23,8 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       picked.push(p);
       continue;
     }
-    const why = !e ? 'файл не знайдено або виключено' : e.flag === 'deny' ? 'заборонений файл' : `більший за ${cfg.maxFileKb} КБ`;
-    warnings.push({ level: 'warn', text: `Пропущено ${p}: ${why}` });
+    const why = !e ? t(lang, 'why.notFound') : e.flag === 'deny' ? t(lang, 'why.denied') : t(lang, 'why.tooBig', { kb: cfg.maxFileKb });
+    warnings.push({ level: 'warn', text: t(lang, 'skipped', { path: p, why }) });
   }
 
   const files = [];
@@ -32,11 +33,12 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
     try {
       content = readText(root, p);
     } catch (err) {
-      warnings.push({ level: 'warn', text: `Не вдалося прочитати ${p}: ${err.code || err.message}` });
+      warnings.push({ level: 'warn', text: t(lang, 'readFailed', { path: p, err: err.code || err.message }) });
       continue;
     }
     for (const hit of scanSecrets(content)) {
-      warnings.push({ level: 'secret', text: `Можливий секрет (${hit.kind}): ${p}:${hit.line}`, path: p, line: hit.line });
+      const kind = t(lang, `kind.${hit.kind}`);
+      warnings.push({ level: 'secret', text: t(lang, 'secret', { kind, path: p, line: hit.line }), path: p, line: hit.line });
     }
     files.push({ path: p, content, tokens: estimateTokens(content, ratio) });
   }
@@ -60,8 +62,8 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       warnings.push({
         level: 'over',
         text: parts.length > 1
-          ? `Частина ${part.index} більша за бюджет: ~${part.tokens} із ${usable} токенів (є файл, що сам не вміщується)`
-          : `Перевищено бюджет: ~${part.tokens} із ${usable} токенів`,
+          ? t(lang, 'overPart', { n: part.index, tokens: part.tokens, usable })
+          : t(lang, 'over', { tokens: part.tokens, usable }),
       });
     }
   }
