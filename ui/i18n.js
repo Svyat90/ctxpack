@@ -83,6 +83,9 @@ window.CTXPACK_I18N = {
     saveFile: 'Save to file',
     viewResult: 'View result',
     split: 'Split to fit the limit',
+    stripDocs: 'Strip @property/@method from class PHPDoc',
+    stripComments: 'Remove all comments',
+    savedLine: 'Removed −{tokens} tokens (−{pct}%) in {files} files',
 
     secretsConfirm: 'The selected files contain possible secrets (see warnings). Click again to copy.',
     copied: 'Copied · ~{tokens} tokens',
@@ -206,6 +209,9 @@ window.CTXPACK_I18N = {
     saveFile: 'Зберегти у файл',
     viewResult: 'Переглянути результат',
     split: 'Розбивати під ліміт',
+    stripDocs: 'Прибирати @property/@method з PHPDoc класів',
+    stripComments: 'Прибрати всі коментарі',
+    savedLine: 'Прибрано −{tokens} токенів (−{pct}%) у файлах: {files}',
 
     secretsConfirm: 'У вибраних файлах є можливі секрети (див. попередження). Натисніть ще раз, щоб скопіювати.',
     copied: 'Скопійовано · ~{tokens} токенів',

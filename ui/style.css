@@ -160,6 +160,9 @@ textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; paddi
 .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .chk input { accent-color: var(--accent); margin: 0; width: 15px; height: 15px; }
 .opts .note { margin: 0; }
+.toggles { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.chk:has(input:disabled) { opacity: .55; cursor: default; }
+.state.saved { color: var(--muted); }
 .empty.err { color: var(--bad); }
 
 /* file preview */

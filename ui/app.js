@@ -45,7 +45,7 @@
   const st = {
     name: '', root: '', git: false, files: [], byPath: new Map(), tree: null, dirs: new Map(),
     sel: new Set(), open: new Set(), q: '',
-    budgets: {}, budget: 'small', split: false, maxFileKb: 200,
+    budgets: {}, budget: 'small', split: false, stripDocs: true, stripComments: false, maxFileKb: 200,
     rules: [], rel: { enabled: true, depth: 1, rules: {} }, depthByRule: {},
     presets: {}, suggestions: [], preview: null, exp: null,
     secretAck: false, relSeq: 0, prevSeq: 0, loaded: false,
@@ -59,7 +59,10 @@
   }
   function persist() {
     try {
-      localStorage.setItem(storeKey, JSON.stringify({ sel: [...st.sel], task: $('task').value, budget: st.budget, split: st.split }));
+      localStorage.setItem(storeKey, JSON.stringify({
+        sel: [...st.sel], task: $('task').value, budget: st.budget,
+        split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments,
+      }));
     } catch {}
   }
 
@@ -218,9 +221,13 @@
       else msg = pv.parts.length > 1 ? t('partsFit', { n: pv.parts.length }) : t('left', { n: fmt(cap - pv.total) });
     }
     const sub = cap ? t('ofUsable', { usable: fmt(cap), limit: fmt(b.limit), reserve: fmt(b.reserve || 0) }) : t('tokensEstimate');
+    const s = pv.stripped;
+    const saved = s && s.tokens > 0
+      ? `<div class="state saved">${esc(t('savedLine', { tokens: fmt(s.tokens), pct: Math.round((s.tokens / Math.max(1, s.raw)) * 100), files: s.files }))}</div>`
+      : '';
     $('meter').innerHTML = `<div class="big"><strong>${fmt(pv.total)}</strong><span>${esc(sub)}</span></div>
       ${cap ? `<div class="track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><div class="fill ${cls === 'ok' ? '' : cls}" style="width:${pct}%"></div></div>` : ''}
-      <div class="state ${cls}">${esc(msg)}</div>`;
+      <div class="state ${cls}">${esc(msg)}</div>${saved}`;
 
     const warns = pv.warnings;
     const shown = warns.slice(0, 8);
@@ -254,7 +261,18 @@
 
   // ---- data refresh ----
   const relOverride = () => ({ enabled: st.rel.enabled, depth: st.rel.depth, rules: st.rel.rules });
-  const exportBody = () => ({ selected: [...st.sel], task: $('task').value, budget: st.budget, split: st.split });
+  const exportBody = () => ({
+    selected: [...st.sel], task: $('task').value, budget: st.budget,
+    split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments,
+  });
+
+  // Removing all comments already removes the IDE-helper tags, so that box is shown checked and locked.
+  function syncToggles() {
+    $('split').checked = st.split;
+    $('stripComments').checked = st.stripComments;
+    $('stripDocs').checked = st.stripDocs || st.stripComments;
+    $('stripDocs').disabled = st.stripComments;
+  }
 
   async function refreshRelated() {
     const seq = ++st.relSeq;
@@ -697,8 +715,9 @@
     } else if (el.id === 'depth') {
       st.rel.depth = Number(el.value);
       relSettingsChanged();
-    } else if (el.id === 'split') {
-      st.split = el.checked;
+    } else if (el.id === 'split' || el.id === 'stripDocs' || el.id === 'stripComments') {
+      st[el.id] = el.checked;
+      syncToggles();
       persist();
       refresh({ related: false });
     } else if (el.id === 'preset') {
@@ -833,7 +852,9 @@
       if (typeof saved.task === 'string') $('task').value = saved.task;
       if (saved.budget && st.budgets[saved.budget] !== undefined) st.budget = saved.budget;
       st.split = !!saved.split;
-      $('split').checked = st.split;
+      st.stripDocs = saved.stripDocs !== false;
+      st.stripComments = !!saved.stripComments;
+      syncToggles();
       openAncestors([...st.sel]);
 
       st.loaded = true;

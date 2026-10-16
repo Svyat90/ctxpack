@@ -49,6 +49,8 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
     task: typeof body.task === 'string' ? body.task : '',
     budget: resolveBudget(cfg, body.budget ?? cfg.defaultBudget, lang),
     split: !!body.split,
+    stripDocs: body.stripDocs !== false,
+    stripComments: !!body.stripComments,
   });
 
   function save(parts) {
@@ -99,6 +101,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
         usable: r.usable,
         files: r.files,
         warnings: r.warnings,
+        stripped: r.stripped,
         parts: r.parts.map(p => ({ index: p.index, tokens: p.tokens, files: p.files.length })),
       };
     },
@@ -109,6 +112,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
         total: r.total,
         usable: r.usable,
         warnings: r.warnings,
+        stripped: r.stripped,
         parts: r.parts.map(p => ({ index: p.index, tokens: p.tokens, files: p.files.length, markdown: p.markdown })),
       };
       if (body.save) result.saved = save(r.parts);

@@ -5,13 +5,15 @@ import { renderMarkdown } from './render.js';
 import { estimateTokens, packParts } from './tokens.js';
 import { scanSecrets } from './deny.js';
 import { t } from './i18n.js';
+import { transformContent } from './transform.js';
 
 export function readText(root, rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
 }
 
 // entries: scan result files. budget: { limit, reserve } or null (no limit).
-export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, now = new Date(), lang = 'en' }) {
+// stripDocs: drop IDE-helper tags from class docblocks; stripComments: drop every comment (for comparing size).
+export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, stripDocs = true, stripComments = false, now = new Date(), lang = 'en' }) {
   const ratio = cfg.tokenCharsRatio;
   const warnings = [];
   const byPath = new Map(entries.map(e => [e.path, e]));
@@ -28,19 +30,30 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
   }
 
   const files = [];
+  // How much the transforms saved: `raw` is the content size before them.
+  const stripped = { files: 0, tokens: 0, raw: 0 };
   for (const p of orderPaths(picked)) {
-    let content;
+    let original;
     try {
-      content = readText(root, p);
+      original = readText(root, p);
     } catch (err) {
       warnings.push({ level: 'warn', text: t(lang, 'readFailed', { path: p, err: err.code || err.message }) });
       continue;
     }
-    for (const hit of scanSecrets(content)) {
+    // Scanned before the transforms so line numbers match the file on disk.
+    for (const hit of scanSecrets(original)) {
       const kind = t(lang, `kind.${hit.kind}`);
       warnings.push({ level: 'secret', text: t(lang, 'secret', { kind, path: p, line: hit.line }), path: p, line: hit.line });
     }
-    files.push({ path: p, content, tokens: estimateTokens(content, ratio) });
+    const content = transformContent(p, original, { stripDocs, stripComments, docTags: cfg.stripDocTags });
+    const tokens = estimateTokens(content, ratio);
+    const rawTokens = estimateTokens(original, ratio);
+    stripped.raw += rawTokens;
+    if (content !== original) {
+      stripped.files++;
+      stripped.tokens += rawTokens - tokens;
+    }
+    files.push({ path: p, content, tokens });
   }
 
   const usable = budget?.limit ? budget.limit - (budget.reserve || 0) : null;
@@ -67,5 +80,5 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       });
     }
   }
-  return { parts, total, usable, files: files.map(f => ({ path: f.path, tokens: f.tokens })), warnings };
+  return { parts, total, usable, files: files.map(f => ({ path: f.path, tokens: f.tokens })), warnings, stripped };
 }

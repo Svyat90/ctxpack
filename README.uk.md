@@ -31,6 +31,8 @@ ctxpack ui ~/code/my-laravel-app
 - Кнопка-«око» біля файлу (з'являється при наведенні) відкриває **перегляд вмісту** у тому ж вікні з тим самим пошуком: номери рядків, підсвічені можливі секрети, кнопки «Додати до вибору» і «PhpStorm». Те саме відкривається кліком по файлу в списку «Найважчі файли». Заборонені файли (`.env` тощо) не показуються.
 - Профіль **32K · small** рахує корисний ліміт 26K (6K залишаються під ваш промпт і відповідь). **Без ліміту** для агента без обмежень.
 - **Розбивати під ліміт** ділить результат на частини цілими файлами. Кожна частина копіюється окремою кнопкою.
+- **Прибирати @property/@method з PHPDoc класів** (увімкнено за замовчуванням) прибирає рядки `@property`, `@property-read`, `@property-write`, `@method` і `@mixin`, які laravel-ide-helper пише над класами. Опис у тому ж докблоці лишається; блок, що став порожнім, прибирається повністю. Докблоки методів не чіпаються.
+- **Прибрати всі коментарі** видаляє всі коментарі в PHP, JS/TS, Vue, Blade, CSS/SCSS і HTML (рядки й регулярні вирази лишаються), щоб порівняти, наскільки меншим стане контекст. Рядок під лічильником показує економію, наприклад «Прибрано −3.2K токенів (−14%) у файлах: 18».
 - **Змінені в git** додає змінені, staged і нові файли.
 - **Пресети** зберігають поточний вибір у `.ctxpack.json` проєкту.
 
@@ -43,8 +45,11 @@ ctxpack export ~/code/app --include app/Http/Controllers/UserController.php --re
 ctxpack export ~/code/app --changed --related --split --budget small
 ctxpack export ~/code/app --preset "users feature" --copy
 ctxpack export ~/code/app --include "app/Services/**/*.php" --stdout > context.md
+ctxpack export ~/code/app --include app --strip-comments   # порівняти: у підсумку видно, скільки прибрано
 ctxpack init ~/code/app     # створити .ctxpack.json
 ```
+
+`--keep-docs` лишає теги IDE-helper у PHPDoc над класами.
 
 Результат пишеться в `./ctxpack-out/<проєкт>-context.md` (або `.part1.md`, `.part2.md`, …). Повний список опцій: `ctxpack --help`.
 
@@ -81,7 +86,8 @@ ctxpack init ~/code/app     # створити .ctxpack.json
 
 Усі поля необов'язкові:
 
-- `exclude`: додаткові виключення (додаються до стандартних `vendor`, `node_modules`, `public/build`, lock-файлів…).
+- `exclude`: додаткові виключення (додаються до стандартних `vendor`, `node_modules`, `public/build`, lock-файлів, згенерованих `_ide_helper*.php` і `.phpstorm.meta.php`…).
+- `stripDocTags` (`["property", "property-read", "property-write", "method", "mixin"]`): теги, що прибираються з PHPDoc класів; `[]` лишає всі.
 - `maxFileKb` (200): більші файли видно в дереві, але експортувати їх не можна.
 - `tokenCharsRatio` (3.2): символів на токен. Для калібрування порівняйте лічильник з тим, що показує ваш AI-інтерфейс, і змініть значення.
 - `budgets`: профілі `{ "limit": 32000, "reserve": 6000 }`; `limit: null` означає без ліміту.

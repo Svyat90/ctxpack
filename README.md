@@ -31,6 +31,8 @@ The file tree is on the left, related-file suggestions in the middle, and the to
 - The **eye** button next to a file (shown on hover) opens its **preview** in the same window with the same search, plus line numbers, highlighted possible secrets, **Add to selection** and **PhpStorm**. Clicking a file in **Heaviest files** does the same. Blocked files (`.env` and similar) are never shown.
 - The **32K · small** profile gives 26K usable tokens (6K stay free for your prompt and the answer). **no limit** is for an agent without a limit.
 - **Split to fit the limit** divides the result into parts made of whole files. Each part has its own copy button.
+- **Strip @property/@method from class PHPDoc** (on by default) removes the `@property`, `@property-read`, `@property-write`, `@method` and `@mixin` lines that laravel-ide-helper writes above classes. A description in the same docblock stays; a block left empty is removed. Method docblocks are not touched.
+- **Remove all comments** drops every comment in PHP, JS/TS, Vue, Blade, CSS/SCSS and HTML (string and regex literals stay), so you can compare how much smaller the context gets. The line under the counter shows the savings, e.g. "Removed −3.2K tokens (−14%) in 18 files".
 - **Changed in git** adds modified, staged and new files.
 - **Presets** save the current selection to the project's `.ctxpack.json`.
 
@@ -43,8 +45,11 @@ ctxpack export ~/code/app --include app/Http/Controllers/UserController.php --re
 ctxpack export ~/code/app --changed --related --split --budget small
 ctxpack export ~/code/app --preset "users feature" --copy
 ctxpack export ~/code/app --include "app/Services/**/*.php" --stdout > context.md
+ctxpack export ~/code/app --include app --strip-comments   # compare: the summary shows the tokens removed
 ctxpack init ~/code/app     # create .ctxpack.json
 ```
+
+`--keep-docs` keeps the IDE-helper tags in class docblocks.
 
 The result goes to `./ctxpack-out/<project>-context.md` (or `.part1.md`, `.part2.md`, …). All options: `ctxpack --help`.
 
@@ -81,7 +86,8 @@ Set the depth (1–5) in the UI. In `.ctxpack.json` you can also set it per rule
 
 Every field is optional:
 
-- `exclude`: extra exclusions, added to the defaults (`vendor`, `node_modules`, `public/build`, lock files…).
+- `exclude`: extra exclusions, added to the defaults (`vendor`, `node_modules`, `public/build`, lock files, the generated `_ide_helper*.php` and `.phpstorm.meta.php`…).
+- `stripDocTags` (`["property", "property-read", "property-write", "method", "mixin"]`): tags removed from class docblocks; `[]` keeps them all.
 - `maxFileKb` (200): larger files are listed in the tree but cannot be exported.
 - `tokenCharsRatio` (3.2): characters per token. To calibrate, compare the counter with what your AI interface shows and adjust.
 - `budgets`: profiles like `{ "limit": 32000, "reserve": 6000 }`; `limit: null` means no limit.

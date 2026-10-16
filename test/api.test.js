@@ -20,6 +20,24 @@ test('file preview refuses denied and unknown files', () => {
   assert.throws(() => api.file('.env', 'uk'), /заборонений/);
 });
 
+test('export strips IDE-helper docblocks by default and reports the savings', () => {
+  const body = { selected: [P.user, P.userController], budget: 'large' };
+  const md = api.export(body).parts[0].markdown;
+  assert.ok(!md.includes('@property'), 'ide-helper tags are gone');
+  assert.ok(md.includes('class User extends Authenticatable'));
+  const on = api.preview(body).stripped;
+  assert.equal(on.files, 1);
+  assert.ok(on.tokens > 50);
+
+  const off = api.preview({ ...body, stripDocs: false }).stripped;
+  assert.deepEqual([off.files, off.tokens], [0, 0]);
+  assert.ok(api.export({ ...body, stripDocs: false }).parts[0].markdown.includes('@property int $id'));
+
+  const all = api.preview({ ...body, stripComments: true }).stripped;
+  assert.equal(all.files, 2, 'the controller docblock goes too');
+  assert.ok(all.tokens > on.tokens);
+});
+
 test('warnings come back in the requested language', () => {
   const body = { selected: [P.services, '.env'], budget: 'small' };
   const en = api.preview(body, 'en').warnings.map(w => w.text);
