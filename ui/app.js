@@ -18,6 +18,14 @@
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const fmt = t => (t >= 1000 ? (t / 1000).toFixed(1) + 'K' : String(t));
   const basename = p => p.split('/').pop();
+  // One-line path: file name first, then its folder, which is cut from the left when it does not fit.
+  // The full path is in the tooltip; clicking the name opens the preview.
+  function fileLabel(p) {
+    const i = p.lastIndexOf('/');
+    const name = p.slice(i + 1);
+    const dir = i > 0 ? p.slice(0, i + 1) : '';
+    return `<span class="fp" title="${esc(p)}"><button type="button" class="fn" data-act="peek" data-p="${esc(p)}" aria-label="Переглянути ${esc(p)}">${esc(name)}</button>${dir ? `<span class="fd"><bdi>${esc(dir)}</bdi></span>` : ''}</span>`;
+  }
   // `p` must already be escaped.
   const eyeBtn = p => `<button class="eye" type="button" data-act="peek" data-p="${p}" aria-label="Переглянути ${p}" title="Переглянути вміст"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>`;
 
@@ -171,8 +179,8 @@
     const sum = list.reduce((s, r) => s + r.tokens, 0);
     const lvl1 = list.filter(r => r.level === 1).length;
     body.innerHTML = `<ul class="sug scroll">${list.map(r => `<li>
-        <span class="p" title="${esc(r.path)}">${esc(r.path)}</span>
-        <span class="add">${eyeBtn(esc(r.path))}<span class="tok">${fmt(r.tokens)}</span><button class="btn" type="button" data-act="addOne" data-p="${esc(r.path)}">Додати</button></span>
+        ${fileLabel(r.path)}
+        <span class="add"><span class="tok">${fmt(r.tokens)}</span><button class="btn add-btn" type="button" data-act="addOne" data-p="${esc(r.path)}" aria-label="Додати ${esc(r.path)}" title="Додати до вибору">+</button></span>
         <span class="why"><span class="lvl">L${r.level}</span><em>${esc(RULE_LABELS[r.rule] || r.rule)}</em> · ${esc(r.reason)}${r.level > 1 ? ` · від ${esc(basename(r.from))}` : ''}</span>
       </li>`).join('')}</ul>
       <div class="sugfoot"><span>Разом ${fmt(sum)} токенів</span><span class="actions">${lvl1 && lvl1 < list.length ? `<button class="btn" type="button" data-act="addLevel1">Лише рівень 1 · ${lvl1}</button>` : ''}<button class="btn solid" type="button" data-act="addAll">Додати всі</button></span></div>`;
@@ -209,7 +217,7 @@
     const top = [...pv.files].sort((a, b2) => b2.tokens - a.tokens).slice(0, 5);
     const max = top.length ? top[0].tokens || 1 : 1;
     $('heavyWrap').hidden = !top.length;
-    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n" title="Переглянути ${esc(f.path)}" data-act="peek" data-p="${esc(f.path)}"><i style="width:${(f.tokens / max) * 100}%"></i><span>${esc(f.path)}</span></div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="Прибрати ${esc(f.path)}">×</button></div>`).join('');
+    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n"><i style="width:${(f.tokens / max) * 100}%"></i>${fileLabel(f.path)}</div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="Прибрати ${esc(f.path)}">×</button></div>`).join('');
 
     const multi = pv.parts.length > 1;
     $('partsWrap').hidden = !multi;
