@@ -1,0 +1,84 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+export const CONFIG_NAME = '.ctxpack.json';
+export const MAX_DEPTH = 5;
+
+export const DEFAULTS = {
+  exclude: [
+    'vendor', 'node_modules', '/public/build', '/public/hot', '/bootstrap/cache', 'ctxpack-out',
+    '*.lock', 'package-lock.json', 'pnpm-lock.yaml', '*.min.js', '*.min.css', '*.map', '*.log',
+    '.DS_Store', '.idea', '.vscode', '/.phpunit.cache', '.phpunit.result.cache',
+  ],
+  maxFileKb: 200,
+  tokenCharsRatio: 3.2,
+  budgets: {
+    small: { limit: 32000, reserve: 6000 },
+    large: { limit: null, reserve: 0 },
+  },
+  defaultBudget: 'small',
+  related: {
+    enabled: true,
+    depth: 1,
+    depthByRule: {},
+    maxSuggestions: 60,
+    skipPackages: true,
+    aliases: { '@': 'resources/js' },
+    rules: {},
+  },
+  presets: {},
+};
+
+export const STARTER = {
+  exclude: [],
+  maxFileKb: 200,
+  tokenCharsRatio: 3.2,
+  budgets: DEFAULTS.budgets,
+  related: { enabled: true, depth: 1, depthByRule: { 'vue-imports': 3, 'php-inheritance': 3 }, rules: { tests: true } },
+  presets: {},
+};
+
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+function merge(base, over) {
+  if (!isObj(base) || !isObj(over)) return over === undefined ? base : over;
+  const out = { ...base };
+  for (const k of Object.keys(over)) out[k] = k in base ? merge(base[k], over[k]) : over[k];
+  return out;
+}
+
+export const clampDepth = d => Math.min(MAX_DEPTH, Math.max(1, Math.round(Number(d) || 1)));
+
+export function readUserConfig(root) {
+  const file = path.join(root, CONFIG_NAME);
+  if (!fs.existsSync(file)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new Error(`Не вдалося прочитати ${CONFIG_NAME}: ${err.message}`);
+  }
+}
+
+export function saveUserConfig(root, user) {
+  fs.writeFileSync(path.join(root, CONFIG_NAME), JSON.stringify(user, null, 2) + '\n');
+}
+
+export function loadConfig(root) {
+  const user = readUserConfig(root);
+  const cfg = merge(structuredClone(DEFAULTS), user);
+  // User excludes extend the defaults instead of replacing them.
+  cfg.exclude = [...new Set([...DEFAULTS.exclude, ...(user.exclude || [])])];
+  cfg.related.depth = clampDepth(cfg.related.depth);
+  return cfg;
+}
+
+// "small" / "large" from config, "none", or a raw limit like "32k" / "50000".
+export function resolveBudget(cfg, spec) {
+  if (spec === undefined || spec === null || spec === '' || spec === 'none' || spec === 'unlimited') return null;
+  const named = cfg.budgets[spec];
+  if (named) return named.limit ? { name: spec, limit: named.limit, reserve: named.reserve || 0 } : null;
+  const m = /^(\d+(?:\.\d+)?)(k)?$/i.exec(String(spec));
+  if (!m) throw new Error(`Невідомий бюджет: ${spec}. Є: ${Object.keys(cfg.budgets).join(', ')} або число на кшталт 32k`);
+  const limit = Math.round(parseFloat(m[1]) * (m[2] ? 1000 : 1));
+  return { name: String(spec), limit, reserve: Math.min(6000, Math.round(limit * 0.19)) };
+}

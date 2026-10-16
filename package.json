@@ -1,0 +1,22 @@
+{
+  "name": "ctxpack",
+  "version": "0.1.0",
+  "description": "Pack selected project files into one Markdown file for AI chats",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "ctxpack": "bin/ctxpack.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "ui"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "ui": "node bin/ctxpack.js ui"
+  }
+}

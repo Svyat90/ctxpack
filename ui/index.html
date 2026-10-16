@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ctxpack</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><i></i>ctxpack</div>
+    <div class="proj" id="proj">Завантаження…</div>
+    <div class="grow"></div>
+    <div class="seg" role="group" aria-label="Профіль бюджету" id="budgets"></div>
+  </header>
+
+  <main class="grid">
+    <section class="panel" aria-label="Файли">
+      <div class="ph"><h2>Файли</h2><span class="count" id="selCount"></span></div>
+      <div class="tools">
+        <input type="search" id="q" placeholder="Пошук за шляхом…" aria-label="Пошук файлів">
+        <button class="chip" type="button" data-act="changed" id="changedBtn">Змінені в git</button>
+        <button class="chip" type="button" data-act="clear">Очистити</button>
+        <button class="chip" type="button" data-act="collapse">Згорнути</button>
+      </div>
+      <div class="tools">
+        <select id="preset" aria-label="Пресет"><option value="">Пресети…</option></select>
+        <input type="text" id="presetName" placeholder="Назва нового пресету" aria-label="Назва нового пресету">
+        <button class="chip" type="button" data-act="savePreset">Зберегти</button>
+        <button class="chip" type="button" data-act="deletePreset" id="delPreset" hidden>Видалити</button>
+      </div>
+      <div id="tree" class="scroll"></div>
+    </section>
+
+    <section class="panel" aria-label="Пов'язані файли">
+      <div class="ph"><h2>Пов'язані файли</h2><span class="count" id="relCount"></span></div>
+      <div class="pb opts">
+        <div class="line">
+          <label class="switch" for="relOn"><input type="checkbox" id="relOn" checked> Підбирати пов'язані</label>
+          <label class="switch" for="depth">Глибина
+            <select id="depth">
+              <option value="1">1 · прямі</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5 · максимум</option>
+            </select>
+          </label>
+        </div>
+        <div class="rules" id="rules"></div>
+        <p class="note">Файли з vendor/ і node_modules/ ніколи не пропонуються.</p>
+      </div>
+      <div id="relBody"></div>
+    </section>
+
+    <section class="panel" aria-label="Результат">
+      <div class="ph"><h2>Результат</h2><span class="count">.md</span></div>
+      <div class="pb stack">
+        <div class="meter" id="meter"></div>
+        <div>
+          <label class="lbl" for="task">Задача (потрапить на початок файлу)</label>
+          <textarea id="task" placeholder="Що треба зробити? Наприклад: додати фільтр за роллю у список користувачів"></textarea>
+        </div>
+        <div class="warns" id="warns"></div>
+        <div id="heavyWrap" hidden><div class="lbl">Найважчі файли</div><div class="heavy" id="heavy"></div></div>
+        <div id="partsWrap" hidden><div class="lbl">Частини: копіюйте по черзі</div><div class="parts" id="parts"></div></div>
+        <div class="actions">
+          <button class="btn solid" type="button" data-act="copy" id="copyBtn">Копіювати MD</button>
+          <button class="btn ghost" type="button" data-act="save">Зберегти у файл</button>
+          <button class="btn ghost" type="button" data-act="togglePrev" id="prevBtn">Попередній перегляд</button>
+          <label class="chk" for="split"><input type="checkbox" id="split"> Розбивати під ліміт</label>
+        </div>
+        <div id="prevWrap" hidden>
+          <pre class="md" id="md" tabindex="0"></pre>
+          <p class="note" id="prevNote"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

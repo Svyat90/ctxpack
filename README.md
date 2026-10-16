@@ -1,0 +1,86 @@
+# ctxpack
+
+Збирає вибрані файли проєкту в один Markdown-файл (дерево + шляхи + повний вміст) для корпоративного AI-чату. Підбирає пов'язані файли для Laravel + Vue 3 + Inertia, рахує токени під ліміт і не пропускає секрети.
+
+Потрібен лише Node.js 20+, залежностей немає.
+
+## Встановлення
+
+```bash
+cd ~/code/ctxpack
+npm link          # робить команду `ctxpack` доступною глобально
+```
+
+Без `npm link` можна запускати як `node ~/code/ctxpack/bin/ctxpack.js …`.
+
+## Веб-інтерфейс
+
+```bash
+ctxpack ui ~/code/my-laravel-app
+```
+
+Відкриється браузер. Зліва дерево файлів, посередині пропозиції пов'язаних файлів, справа токен-бюджет, задача, попередження і кнопки «Копіювати MD» / «Зберегти у файл».
+
+- Профіль **32K · small** рахує корисний ліміт 26K (6K залишаються під ваш промпт і відповідь). **Без ліміту** для агента без обмежень.
+- **Розбивати під ліміт** ділить результат на частини цілими файлами. Кожна частина копіюється окремою кнопкою.
+- **Змінені в git** додає змінені, staged і нові файли.
+- **Пресети** зберігають поточний вибір у `.ctxpack.json` проєкту.
+
+Сервер слухає лише `127.0.0.1` і приймає запити тільки з одноразовим токеном з посилання.
+
+## CLI
+
+```bash
+ctxpack export ~/code/app --include app/Http/Controllers/UserController.php --related --depth 2
+ctxpack export ~/code/app --changed --related --split --budget small
+ctxpack export ~/code/app --preset "users feature" --copy
+ctxpack export ~/code/app --include "app/Services/**/*.php" --stdout > context.md
+ctxpack init ~/code/app     # створити .ctxpack.json
+```
+
+Результат пишеться в `./ctxpack-out/<проєкт>-context.md` (або `.part1.md`, `.part2.md`, …). Повний список опцій: `ctxpack --help`.
+
+## Пов'язані файли
+
+| Правило | Що знаходить |
+|---|---|
+| Route контролера | рядки в `routes/*.php`, де згадано контролер |
+| Залежності контролера | FormRequest, Resource, Model, Policy, Service з сигнатур, `new X`, `X::` |
+| Inertia-сторінка | `Inertia::render('Users/Index')` → `resources/js/Pages/Users/Index.vue` |
+| Імпорти Vue/JS | відносні імпорти та `@/…` |
+| route() у Vue | `route('users.index')` → файл маршрутів і контролер |
+| Наслідування PHP | `extends`, `implements`, трейти |
+| Міграції та фабрики | міграції таблиці моделі, Factory, Seeder, Policy, Observer |
+| Тести | тести, що згадують клас або компонент |
+
+Файли з `vendor/` (ядро Laravel, composer-пакети) і `node_modules/` (npm-пакети) **ніколи** не пропонуються. PHP-класи шукаються лише через PSR-4 вашого `composer.json`, а голі npm-імпорти (`vue`, `@inertiajs/vue3`) пропускаються.
+
+Глибина 1–5 задається в інтерфейсі. В `.ctxpack.json` її можна задати окремо для правил:
+
+```json
+{
+  "related": {
+    "depth": 1,
+    "depthByRule": { "vue-imports": 4, "php-inheritance": 5 },
+    "rules": { "tests": false }
+  }
+}
+```
+
+## Налаштування `.ctxpack.json`
+
+Усі поля необов'язкові:
+
+- `exclude`: додаткові виключення (додаються до стандартних `vendor`, `node_modules`, `public/build`, lock-файлів…).
+- `maxFileKb` (200): більші файли видно в дереві, але експортувати їх не можна.
+- `tokenCharsRatio` (3.2): символів на токен. Для калібрування порівняйте лічильник з тим, що показує ваш AI-інтерфейс, і змініть значення.
+- `budgets`: профілі `{ "limit": 32000, "reserve": 6000 }`; `limit: null` означає без ліміту.
+- `related.aliases` (`{"@": "resources/js"}`): аліаси імпортів.
+
+Секрети не експортуються ніколи: `.env*` (крім `.env.example`), ключі, сертифікати, `storage/`, `auth.json`. У вибраних файлах шукаються схожі на секрети рядки, і перед копіюванням інтерфейс просить підтвердження.
+
+## Тести
+
+```bash
+npm test
+```

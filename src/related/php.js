@@ -1,0 +1,150 @@
+import { escapeRe, isPhp, shortName } from './util.js';
+
+const stripComments = src => src
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*(?:\/\/|#(?!\[)).*$/gm, '');
+
+function addImport(map, item) {
+  const [name, alias] = item.trim().split(/\s+as\s+/);
+  const fqcn = name.replace(/^\\/, '');
+  map.set(alias || shortName(fqcn), fqcn);
+}
+
+// Regex-level PHP reading: namespace, imports, first class/interface/trait/enum and what it inherits.
+export function parsePhp(text) {
+  const src = stripComments(text);
+  const decl = /(?<!::)\b(?:(?:abstract|final|readonly)\s+)*(class|interface|trait|enum)\s+(\w+)/.exec(src);
+  const head = decl ? src.slice(0, decl.index) : src;
+  const ns = (/^\s*namespace\s+([\w\\]+)\s*[;{]/m.exec(head) || [])[1] || '';
+
+  const imports = new Map();
+  for (const m of head.matchAll(/^\s*use\s+(?!function\b|const\b)([\w\\]+)\\\{([^}]+)\}\s*;/gm)) {
+    for (const item of m[2].split(',')) if (item.trim()) addImport(imports, `${m[1]}\\${item.trim()}`);
+  }
+  for (const m of head.matchAll(/^\s*use\s+(?!function\b|const\b)([\w\\]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w\\]+(?:\s+as\s+\w+)?)*)\s*;/gm)) {
+    for (const item of m[1].split(',')) addImport(imports, item);
+  }
+
+  const resolve = raw => {
+    const name = raw.trim().replace(/^\?/, '');
+    if (name.startsWith('\\')) return name.slice(1);
+    const [first, ...rest] = name.split('\\');
+    if (imports.has(first)) return [imports.get(first), ...rest].join('\\');
+    return ns ? `${ns}\\${name}` : name;
+  };
+
+  const info = { ns, imports, resolve, kind: null, name: null, parents: [], interfaces: [], traits: [], body: '' };
+  if (!decl) return info;
+  info.kind = decl[1];
+  info.name = decl[2];
+  const brace = src.indexOf('{', decl.index + decl[0].length);
+  const header = src.slice(decl.index + decl[0].length, brace < 0 ? undefined : brace);
+  const list = s => (s ? s.split(',').map(x => x.trim()).filter(Boolean) : []);
+  info.parents = list((/\bextends\s+([\w\\\s,]+?)(?=\s+implements\b|\s*$)/.exec(header) || [])[1]);
+  info.interfaces = list((/\bimplements\s+([\w\\\s,]+?)\s*$/.exec(header) || [])[1]);
+  info.body = brace < 0 ? '' : src.slice(brace);
+  // Trait imports inside the class body; closures (`use ($x)`) start with "(" and are skipped.
+  for (const m of info.body.matchAll(/^[ \t]*use\s+([\w\\]+(?:\s*,\s*[\w\\]+)*)\s*[;{]/gm)) info.traits.push(...list(m[1]));
+  return info;
+}
+
+// Class names referenced from method signatures, `new X` and `X::` calls.
+export function referencedClasses(info) {
+  const names = new Set();
+  for (const m of info.body.matchAll(/function\s+&?\w+\s*\(([^)]*)\)/g)) {
+    for (const t of m[1].matchAll(/(?:^|[(,|])\s*(?:(?:public|protected|private|readonly)\s+)*\??([A-Z\\][\w\\]*)\s+&?(?:\.\.\.)?\$/g)) names.add(t[1]);
+  }
+  for (const m of info.body.matchAll(/\bnew\s+([A-Z\\][\w\\]*)/g)) names.add(m[1]);
+  for (const m of info.body.matchAll(/(?<![\w\\$>])([A-Z\\][\w\\]*)::/g)) names.add(m[1]);
+  return names;
+}
+
+export const phpInfo = (ctx, p) => ctx.memo('php:' + p, () => parsePhp(ctx.read(p)));
+
+const isController = p => isPhp(p) && (/\/Http\/Controllers\//.test(p) || /Controller\.php$/.test(p));
+const routeFiles = ctx => ctx.under('routes/').filter(isPhp);
+const MODEL_BASES = /^(?:Model|Authenticatable|Pivot|MorphPivot|Eloquent)$/;
+const snake = s => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+const plural = s => (/[^aeiou]y$/.test(s) ? s.slice(0, -1) + 'ies' : /(?:s|x|z|ch|sh)$/.test(s) ? s + 'es' : s + 's');
+
+function kindOf(file) {
+  const kinds = [
+    [/\/Http\/Requests\//, 'FormRequest'], [/\/Http\/Resources\//, 'Resource'], [/\/Models\//, 'Model'],
+    [/\/Policies\//, 'Policy'], [/\/Services\//, 'Service'], [/\/Actions\//, 'Action'],
+    [/\/Jobs\//, 'Job'], [/\/Events\//, 'Event'], [/\/Enums\//, 'Enum'],
+  ];
+  return (kinds.find(([re]) => re.test(file)) || [null, 'uses'])[1];
+}
+
+export const phpRules = [
+  {
+    name: 'controller-routes',
+    applies: isController,
+    find(p, ctx) {
+      const c = phpInfo(ctx, p);
+      if (!c.name) return [];
+      const needle = new RegExp(`\\b${escapeRe(c.name)}(?:::class|@)`);
+      const out = [];
+      for (const r of routeFiles(ctx)) {
+        const i = ctx.read(r).split('\n').findIndex(line => needle.test(line));
+        if (i >= 0) out.push({ path: r, reason: `${r.split('/').pop()}:${i + 1}` });
+      }
+      return out;
+    },
+  },
+  {
+    name: 'controller-deps',
+    applies: isController,
+    find(p, ctx) {
+      const c = phpInfo(ctx, p);
+      const out = [];
+      for (const n of referencedClasses(c)) {
+        const fqcn = c.resolve(n);
+        const file = ctx.classFile(fqcn);
+        if (file && file !== p) out.push({ path: file, reason: `${kindOf(file)} ${shortName(fqcn)}` });
+      }
+      return out;
+    },
+  },
+  {
+    name: 'php-inheritance',
+    applies: isPhp,
+    find(p, ctx) {
+      const c = phpInfo(ctx, p);
+      const out = [];
+      for (const [names, verb] of [[c.parents, 'extends'], [c.interfaces, 'implements'], [c.traits, 'use']]) {
+        for (const n of names) {
+          const fqcn = c.resolve(n);
+          const file = ctx.classFile(fqcn);
+          if (file && file !== p) out.push({ path: file, reason: `${verb} ${shortName(fqcn)}` });
+        }
+      }
+      return out;
+    },
+  },
+  {
+    name: 'model-extras',
+    applies: isPhp,
+    find(p, ctx) {
+      const c = phpInfo(ctx, p);
+      if (c.kind !== 'class') return [];
+      const isModel = p.includes('/Models/') || c.parents.some(n => MODEL_BASES.test(shortName(c.resolve(n))));
+      if (!isModel) return [];
+      const table = (/\$table\s*=\s*['"]([\w.]+)['"]/.exec(c.body) || [])[1] || plural(snake(c.name));
+      const tableRe = new RegExp(`Schema::\\w+\\(\\s*['"]${escapeRe(table)}['"]`);
+      const out = [];
+      for (const m of ctx.under('database/migrations/')) {
+        if (tableRe.test(ctx.read(m))) out.push({ path: m, reason: `migration: ${table}` });
+      }
+      for (const [file, reason] of [
+        [`database/factories/${c.name}Factory.php`, 'factory'],
+        [`database/seeders/${c.name}Seeder.php`, 'seeder'],
+        [`app/Policies/${c.name}Policy.php`, 'policy'],
+        [`app/Observers/${c.name}Observer.php`, 'observer'],
+      ]) {
+        if (ctx.has(file)) out.push({ path: file, reason });
+      }
+      return out;
+    },
+  },
+];
