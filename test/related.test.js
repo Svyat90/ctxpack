@@ -105,3 +105,35 @@ test('rules can be switched off one by one, or all at once', () => {
   assert.ok(s[P.web]);
   assert.deepEqual(run([P.userController], { enabled: false }), []);
 });
+
+test('suggestions carry their group and the code they were found from', () => {
+  const s = byPath(run([P.userController, P.usersIndex]));
+  assert.equal(s[P.web].group, 'routes');
+  assert.equal(s[P.storeRequest].group, 'requests');
+  assert.equal(s[P.user].group, 'models');
+  assert.equal(s[P.baseController].group, 'controllers');
+  assert.equal(s[P.test].group, 'tests', 'a controller test is a test, not a controller');
+  assert.equal(s[P.dataTable].group, 'components');
+
+  const req = s[P.storeRequest].sites;
+  assert.equal(req.length, 1);
+  assert.equal(req[0].file, P.userController);
+  assert.match(req[0].code.split('\n')[req[0].lines[0] - req[0].start], /function store\(StoreUserRequest/, 'points at the use, not at the import');
+
+  // web.php is found from the controller and again from route() in the page: both places are kept,
+  // and the two neighbouring route lines share one snippet.
+  const web = s[P.web].sites;
+  assert.deepEqual(web.map(x => x.file), [P.web, P.usersIndex]);
+  assert.deepEqual(web[0].lines, [6, 7]);
+  assert.match(web[1].code, /route\('users\.index'\)/);
+});
+
+test('groupOf: services, policies under app/Models, Inertia pages', async () => {
+  const { groupOf } = await import('../src/related/groups.js');
+  assert.equal(groupOf('app/Services/OrderService.php'), 'services');
+  assert.equal(groupOf('app/Models/Policies/UserPolicy.php'), 'policies');
+  assert.equal(groupOf('app/Policies/UserPolicy.php'), 'policies');
+  assert.equal(groupOf('resources/js/Pages/Users/Index.vue'), 'pages');
+  assert.equal(groupOf('database/migrations/x.php'), 'database');
+  assert.equal(groupOf('app/Enums/Status.php'), 'php');
+});

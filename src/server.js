@@ -14,6 +14,7 @@ const STATIC = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/i18n.js': ['i18n.js', 'text/javascript; charset=utf-8'],
+  '/highlight.js': ['highlight.js', 'text/javascript; charset=utf-8'],
 };
 const MAX_BODY = 5 * 1024 * 1024;
 

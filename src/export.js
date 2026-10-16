@@ -6,6 +6,7 @@ import { estimateTokens, packParts } from './tokens.js';
 import { scanSecrets } from './deny.js';
 import { t } from './i18n.js';
 import { transformContent } from './transform.js';
+import { hashText, normalizeRanges, applyCuts, finishCuts } from './cuts.js';
 
 export function readText(root, rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
@@ -13,7 +14,8 @@ export function readText(root, rel) {
 
 // entries: scan result files. budget: { limit, reserve } or null (no limit).
 // stripDocs: drop IDE-helper tags from class docblocks; stripComments: drop every comment (for comparing size).
-export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, stripDocs = true, stripComments = false, now = new Date(), lang = 'en' }) {
+// cuts: { path: { hash, ranges: [[first, last], …] } }, blocks of lines removed in the UI (see src/cuts.js).
+export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, stripDocs = true, stripComments = false, cuts = {}, now = new Date(), lang = 'en' }) {
   const ratio = cfg.tokenCharsRatio;
   const warnings = [];
   const byPath = new Map(entries.map(e => [e.path, e]));
@@ -32,6 +34,7 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
   const files = [];
   // How much the transforms saved: `raw` is the content size before them.
   const stripped = { files: 0, tokens: 0, raw: 0 };
+  const staleCuts = [];
   for (const p of orderPaths(picked)) {
     let original;
     try {
@@ -40,12 +43,25 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       warnings.push({ level: 'warn', text: t(lang, 'readFailed', { path: p, err: err.code || err.message }) });
       continue;
     }
-    // Scanned before the transforms so line numbers match the file on disk.
+    const hash = hashText(original);
+    let ranges = [];
+    if (cuts[p]) {
+      if (cuts[p].hash === hash) ranges = normalizeRanges(cuts[p].ranges, original.split('\n').length);
+      else {
+        staleCuts.push(p);
+        warnings.push({ level: 'warn', text: t(lang, 'cutsStale', { path: p }) });
+      }
+    }
+    const inCut = line => ranges.some(([a, b]) => line >= a && line <= b);
+    // Scanned before the transforms so line numbers match the file on disk; a secret in a cut block is not exported.
     for (const hit of scanSecrets(original)) {
+      if (inCut(hit.line)) continue;
       const kind = t(lang, `kind.${hit.kind}`);
       warnings.push({ level: 'secret', text: t(lang, 'secret', { kind, path: p, line: hit.line }), path: p, line: hit.line });
     }
-    const content = transformContent(p, original, { stripDocs, stripComments, docTags: cfg.stripDocTags });
+    const cutDone = applyCuts(original, ranges);
+    const transformed = transformContent(p, cutDone.text, { stripDocs, stripComments, docTags: cfg.stripDocTags });
+    const { content, map, markers } = finishCuts(p, original, cutDone.text, cutDone.origin, transformed);
     const tokens = estimateTokens(content, ratio);
     const rawTokens = estimateTokens(original, ratio);
     stripped.raw += rawTokens;
@@ -53,7 +69,8 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       stripped.files++;
       stripped.tokens += rawTokens - tokens;
     }
-    files.push({ path: p, content, tokens });
+    const cutLines = ranges.reduce((s, [a, b]) => s + b - a + 1, 0);
+    files.push({ path: p, content, tokens, hash, map, markers, cutLines });
   }
 
   const usable = budget?.limit ? budget.limit - (budget.reserve || 0) : null;
@@ -66,7 +83,7 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
 
   const parts = groups.map((group, i) => {
     const markdown = renderMarkdown({ name, files: group, task, now, part: { index: i + 1, total: groups.length } });
-    return { index: i + 1, markdown, tokens: estimateTokens(markdown, ratio), files: group.map(f => f.path) };
+    return { index: i + 1, markdown, tokens: estimateTokens(markdown, ratio), files: group.map(f => f.path), blocks: locateFiles(markdown, group) };
   });
   const total = parts.reduce((s, p) => s + p.tokens, 0);
   if (usable) {
@@ -80,5 +97,20 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       });
     }
   }
-  return { parts, total, usable, files: files.map(f => ({ path: f.path, tokens: f.tokens })), warnings, stripped };
+  return { parts, total, usable, files: files.map(f => ({ path: f.path, tokens: f.tokens, cutLines: f.cutLines })), warnings, stripped, staleCuts };
+}
+
+// Where each file sits in the Markdown (0-based lines: its heading, and its first content line after the fence),
+// with the file line of every content line, so the viewer can navigate and cut by file lines.
+function locateFiles(markdown, files) {
+  const lines = markdown.split('\n');
+  const out = [];
+  let from = 0;
+  for (const f of files) {
+    const heading = lines.indexOf(`### \`${f.path}\``, from);
+    if (heading < 0) continue;
+    out.push({ path: f.path, hash: f.hash, heading, start: heading + 2, map: f.map, markers: f.markers });
+    from = heading + 1;
+  }
+  return out;
 }

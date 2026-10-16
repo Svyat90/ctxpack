@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { escapeRe, isPhp } from './util.js';
+import { escapeRe, isPhp, lineHits, sitesIn } from './util.js';
 import { phpInfo } from './php.js';
 
 const SCRIPT = /\.(?:vue|js|mjs|cjs|ts|jsx|tsx)$/;
@@ -35,7 +35,10 @@ function pageFile(name, ctx) {
   return null;
 }
 
-// Line of the route named `name` (or of the Route::resource that generates it), with two lines of context before it.
+const quoted = s => new RegExp(`['"]${escapeRe(s)}['"]`);
+
+// Line of the route named `name` (or of the Route::resource that generates it): its 1-based number
+// and the text from two lines before it, where the controller of a chained route is.
 function findRoute(text, name) {
   const lines = text.split('\n');
   const named = new RegExp(`name\\(\\s*['"]${escapeRe(name)}['"]`);
@@ -44,7 +47,7 @@ function findRoute(text, name) {
     const resource = new RegExp(`Route::(?:api)?[Rr]esources?\\(\\s*['"]${escapeRe(name.split('.').slice(0, -1).join('.'))}['"]`);
     i = lines.findIndex(l => resource.test(l));
   }
-  return i < 0 ? null : lines.slice(Math.max(0, i - 2), i + 1).join('\n');
+  return i < 0 ? null : { line: i + 1, text: lines.slice(Math.max(0, i - 2), i + 1).join('\n') };
 }
 
 function controllerIn(text, routeFile, ctx) {
@@ -66,7 +69,7 @@ export const vueRules = [
       const out = [];
       for (const name of names) {
         const page = pageFile(name, ctx);
-        if (page) out.push({ path: page, reason: `Inertia::render('${name}')` });
+        if (page) out.push({ path: page, reason: `Inertia::render('${name}')`, sites: sitesIn(p, lineHits(text, quoted(name), { max: 2 })) });
       }
       return out;
     },
@@ -80,7 +83,7 @@ export const vueRules = [
       for (const m of src.matchAll(IMPORT_RE)) {
         const spec = m[1] || m[2] || m[3];
         const file = resolveSpecifier(spec, p, ctx);
-        if (file && file !== p) out.push({ path: file, reason: `import ${path.posix.basename(spec)}` });
+        if (file && file !== p) out.push({ path: file, reason: `import ${path.posix.basename(spec)}`, sites: sitesIn(p, lineHits(ctx.read(p), quoted(spec), { max: 1 })) });
       }
       return out;
     },
@@ -89,15 +92,18 @@ export const vueRules = [
     name: 'vue-routes',
     applies: p => SCRIPT.test(p),
     find(p, ctx) {
-      const names = new Set([...ctx.read(p).matchAll(/\broute\(\s*['"]([\w.-]+)['"]/g)].map(m => m[1]));
+      const text = ctx.read(p);
+      const names = new Set([...text.matchAll(/\broute\(\s*['"]([\w.-]+)['"]/g)].map(m => m[1]));
       const out = [];
       for (const name of names) {
+        const calls = sitesIn(p, lineHits(text, new RegExp(`\\broute\\(\\s*${quoted(name).source}`), { max: 2 }));
         for (const r of ctx.under('routes/').filter(isPhp)) {
           const hit = findRoute(ctx.read(r), name);
           if (!hit) continue;
-          out.push({ path: r, reason: `route('${name}')` });
-          const controller = controllerIn(hit, r, ctx);
-          if (controller) out.push({ path: controller, reason: `route('${name}') → ${controller.split('/').pop().replace(/\.php$/, '')}` });
+          const sites = [...calls, { file: r, line: hit.line }];
+          out.push({ path: r, reason: `route('${name}')`, sites });
+          const controller = controllerIn(hit.text, r, ctx);
+          if (controller) out.push({ path: controller, reason: `route('${name}') → ${controller.split('/').pop().replace(/\.php$/, '')}`, sites });
         }
       }
       return out;

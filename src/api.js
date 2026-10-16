@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, readUserConfig, saveUserConfig, resolveBudget, clampDepth } from './config.js';
 import { listFiles, changedFiles } from './scan.js';
-import { createContext, findRelated, RULE_NAMES } from './related/index.js';
+import { createContext, findRelated, RULE_NAMES, GROUPS } from './related/index.js';
 import { buildExport, readText } from './export.js';
 import { matcher } from './match.js';
 import { orderPaths } from './order.js';
@@ -10,6 +10,7 @@ import { scanSecrets } from './deny.js';
 import { estimateTokens } from './tokens.js';
 import { languageFor } from './render.js';
 import { t } from './i18n.js';
+import { hashText } from './cuts.js';
 
 const PEEK_LIMIT = 400 * 1024;
 const strings = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
@@ -22,6 +23,16 @@ function pickRelated(r = {}) {
   const byRule = obj => Object.entries(obj && typeof obj === 'object' ? obj : {}).filter(([k]) => RULE_NAMES.includes(k));
   if ('depthByRule' in r) out.depthByRule = Object.fromEntries(byRule(r.depthByRule).map(([k, v]) => [k, clampDepth(v)]));
   if ('rules' in r) out.rules = Object.fromEntries(byRule(r.rules).map(([k, v]) => [k, !!v]));
+  return out;
+}
+
+// { path: { hash, ranges } } as sent by the UI; anything else is ignored.
+function pickCuts(cuts) {
+  const out = {};
+  if (!cuts || typeof cuts !== 'object') return out;
+  for (const [p, c] of Object.entries(cuts)) {
+    if (c && typeof c.hash === 'string' && Array.isArray(c.ranges)) out[p] = { hash: c.hash, ranges: c.ranges };
+  }
   return out;
 }
 
@@ -51,6 +62,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
     split: !!body.split,
     stripDocs: body.stripDocs !== false,
     stripComments: !!body.stripComments,
+    cuts: pickCuts(body.cuts),
   });
 
   function save(parts) {
@@ -91,7 +103,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
 
     related(body = {}) {
       const rel = { ...cfg.related, ...pickRelated(body.related) };
-      return { suggestions: findRelated(ctx, strings(body.selected), rel) };
+      return { suggestions: findRelated(ctx, strings(body.selected), rel), groups: GROUPS };
     },
 
     preview(body = {}, lang = 'en') {
@@ -102,6 +114,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
         files: r.files,
         warnings: r.warnings,
         stripped: r.stripped,
+        staleCuts: r.staleCuts,
         parts: r.parts.map(p => ({ index: p.index, tokens: p.tokens, files: p.files.length })),
       };
     },
@@ -113,7 +126,8 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
         usable: r.usable,
         warnings: r.warnings,
         stripped: r.stripped,
-        parts: r.parts.map(p => ({ index: p.index, tokens: p.tokens, files: p.files.length, markdown: p.markdown })),
+        staleCuts: r.staleCuts,
+        parts: r.parts.map(p => ({ index: p.index, tokens: p.tokens, files: p.files.length, markdown: p.markdown, blocks: p.blocks })),
       };
       if (body.save) result.saved = save(r.parts);
       return result;
@@ -133,6 +147,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
         tokens: estimateTokens(text, cfg.tokenCharsRatio),
         lines: text.split('\n').length,
         language: languageFor(rel),
+        hash: hashText(text),
         exportable: !entry.flag,
         secrets: scanSecrets(text),
       };

@@ -1,4 +1,4 @@
-import { escapeRe, isPhp, shortName } from './util.js';
+import { escapeRe, isPhp, shortName, lineHits, sitesIn } from './util.js';
 
 const stripComments = src => src
   .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -65,6 +65,13 @@ const isController = p => isPhp(p) && (/\/Http\/Controllers\//.test(p) || /Contr
 const routeFiles = ctx => ctx.under('routes/').filter(isPhp);
 const MODEL_BASES = /^(?:Model|Authenticatable|Pivot|MorphPivot|Eloquent)$/;
 const snake = s => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+// Lines of `p` that use the class name as written there (`Requests\\Store`, `\\App\\X`), imports skipped unless nothing else is found.
+function usesOf(ctx, p, name, max) {
+  const re = new RegExp(`(?<![\\w\\\\$])${escapeRe(name)}(?![\\w\\\\])`);
+  const text = ctx.read(p);
+  const lines = lineHits(text, re, { max, imports: false });
+  return sitesIn(p, lines.length ? lines : lineHits(text, re, { max: 1 }));
+}
 const plural = s => (/[^aeiou]y$/.test(s) ? s.slice(0, -1) + 'ies' : /(?:s|x|z|ch|sh)$/.test(s) ? s + 'es' : s + 's');
 
 function kindOf(file) {
@@ -86,8 +93,8 @@ export const phpRules = [
       const needle = new RegExp(`\\b${escapeRe(c.name)}(?:::class|@)`);
       const out = [];
       for (const r of routeFiles(ctx)) {
-        const i = ctx.read(r).split('\n').findIndex(line => needle.test(line));
-        if (i >= 0) out.push({ path: r, reason: `${r.split('/').pop()}:${i + 1}` });
+        const lines = lineHits(ctx.read(r), needle);
+        if (lines.length) out.push({ path: r, reason: `${r.split('/').pop()}:${lines[0]}`, sites: sitesIn(r, lines) });
       }
       return out;
     },
@@ -101,7 +108,7 @@ export const phpRules = [
       for (const n of referencedClasses(c)) {
         const fqcn = c.resolve(n);
         const file = ctx.classFile(fqcn);
-        if (file && file !== p) out.push({ path: file, reason: `${kindOf(file)} ${shortName(fqcn)}` });
+        if (file && file !== p) out.push({ path: file, reason: `${kindOf(file)} ${shortName(fqcn)}`, sites: usesOf(ctx, p, n, 3) });
       }
       return out;
     },
@@ -116,7 +123,7 @@ export const phpRules = [
         for (const n of names) {
           const fqcn = c.resolve(n);
           const file = ctx.classFile(fqcn);
-          if (file && file !== p) out.push({ path: file, reason: `${verb} ${shortName(fqcn)}` });
+          if (file && file !== p) out.push({ path: file, reason: `${verb} ${shortName(fqcn)}`, sites: usesOf(ctx, p, n, 1) });
         }
       }
       return out;
@@ -128,18 +135,20 @@ export const phpRules = [
     find(p, ctx) {
       const c = phpInfo(ctx, p);
       if (c.kind !== 'class') return [];
-      const isModel = p.includes('/Models/') || c.parents.some(n => MODEL_BASES.test(shortName(c.resolve(n))));
+      const isModel = (p.includes('/Models/') && !p.includes('/Policies/')) || c.parents.some(n => MODEL_BASES.test(shortName(c.resolve(n))));
       if (!isModel) return [];
       const table = (/\$table\s*=\s*['"]([\w.]+)['"]/.exec(c.body) || [])[1] || plural(snake(c.name));
       const tableRe = new RegExp(`Schema::\\w+\\(\\s*['"]${escapeRe(table)}['"]`);
       const out = [];
       for (const m of ctx.under('database/migrations/')) {
-        if (tableRe.test(ctx.read(m))) out.push({ path: m, reason: `migration: ${table}` });
+        const lines = lineHits(ctx.read(m), tableRe);
+        if (lines.length) out.push({ path: m, reason: `migration: ${table}`, sites: sitesIn(m, lines) });
       }
       for (const [file, reason] of [
         [`database/factories/${c.name}Factory.php`, 'factory'],
         [`database/seeders/${c.name}Seeder.php`, 'seeder'],
         [`app/Policies/${c.name}Policy.php`, 'policy'],
+        [`app/Models/Policies/${c.name}Policy.php`, 'policy'],
         [`app/Observers/${c.name}Observer.php`, 'observer'],
       ]) {
         if (ctx.has(file)) out.push({ path: file, reason });

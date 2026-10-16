@@ -35,7 +35,7 @@
         <button class="chip" type="button" data-act="savePreset" data-i18n="save">Save</button>
         <button class="chip" type="button" data-act="deletePreset" id="delPreset" data-i18n="delete" hidden>Delete</button>
       </div>
-      <div id="tree" class="scroll"></div>
+      <div id="tree" class="scroll fill-y"></div>
     </section>
 
     <div class="gutter" data-i="0" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-aria="gutter0" data-i18n-title="gutterTitle"></div>
@@ -58,21 +58,29 @@
         <div class="rules" id="rules"></div>
         <p class="note" data-i18n="noPackages"></p>
       </div>
-      <div id="relBody"></div>
+      <div id="relBody" class="fill-y"></div>
     </section>
 
     <div class="gutter" data-i="1" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-aria="gutter1" data-i18n-title="gutterTitle"></div>
 
     <section class="panel" data-i18n-aria="panelResult">
       <div class="ph"><h2 data-i18n="panelResult">Result</h2><span class="count">.md</span></div>
-      <div class="pb stack">
+      <div class="pb stack fill-y">
         <div class="meter" id="meter"></div>
         <div>
           <label class="lbl" for="task" data-i18n="taskLabel"></label>
           <textarea id="task" data-i18n-ph="taskPh"></textarea>
         </div>
         <div class="warns" id="warns"></div>
-        <div id="heavyWrap" hidden><div class="lbl" data-i18n="heaviest"></div><div class="heavy" id="heavy"></div></div>
+        <div id="heavyWrap" hidden>
+          <div class="lbl-row"><span class="lbl" data-i18n="selectedFiles"></span>
+            <div class="seg sm" role="group" data-i18n-aria="fileOrder" id="fOrder">
+              <button type="button" data-act="fOrder" data-v="size" data-i18n="bySize" aria-pressed="false"></button>
+              <button type="button" data-act="fOrder" data-v="tree" data-i18n="byTree" aria-pressed="false"></button>
+            </div>
+          </div>
+          <div class="heavy" id="heavy"></div>
+        </div>
         <div id="partsWrap" hidden><div class="lbl" data-i18n="partsLabel"></div><div class="parts" id="parts"></div></div>
         <div class="actions">
           <button class="btn solid" type="button" data-act="copy" id="copyBtn">Copy MD</button>
@@ -100,6 +108,7 @@
       <button class="btn ghost" type="button" data-act="vNext" id="vNext" data-i18n-aria="nextMatch" data-i18n-title="nextMatch">↓</button>
     </div>
     <div class="actions">
+      <button class="btn ghost" type="button" data-act="vRestore" id="vRestore" data-i18n="restoreOriginal" hidden></button>
       <button class="btn solid" type="button" data-act="vToggle" id="vToggle"></button>
       <a class="btn ghost" id="vIde" href="#" data-i18n-title="openIde">PhpStorm</a>
       <button class="btn solid" type="button" data-act="copyPart" data-i="1" id="vCopy"></button>
@@ -108,10 +117,16 @@
   </div>
   <div id="vWarn"></div>
   <div class="parts v-tabs" id="vTabs"></div>
-  <div class="pk-body"><pre id="vCode" class="code" tabindex="0"></pre></div>
+  <div class="pk-body">
+    <nav class="v-nav" id="vNav" data-i18n-aria="navFiles" hidden></nav>
+    <div class="pk-code" id="vScroll"><pre id="vCode" class="code" tabindex="0"></pre></div>
+  </div>
+  <button class="btn solid cut-btn" type="button" data-act="vCut" id="vCutBtn" hidden></button>
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="pop" id="relPop" role="tooltip" hidden></div>
 <script src="/i18n.js"></script>
+<script src="/highlight.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

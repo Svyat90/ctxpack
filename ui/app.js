@@ -20,14 +20,13 @@
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const fmt = n => (n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n));
   const basename = p => p.split('/').pop();
-  // One-line path: file name first, then its folder, which is cut from the left when it does not fit.
-  // The full path is in the tooltip; clicking the name opens the preview.
-  function fileLabel(p) {
+  // Full path on one line: folder (cut from the left when it does not fit), then the file name.
+  function pathSpans(p) {
     const i = p.lastIndexOf('/');
-    const name = p.slice(i + 1);
     const dir = i > 0 ? p.slice(0, i + 1) : '';
-    return `<span class="fp" title="${esc(p)}"><button type="button" class="fn" data-act="peek" data-p="${esc(p)}" aria-label="${esc(t('preview', { path: p }))}">${esc(name)}</button>${dir ? `<span class="fd"><bdi>${esc(dir)}</bdi></span>` : ''}</span>`;
+    return `${dir ? `<span class="rd"><bdi>${esc(dir)}</bdi></span>` : ''}<span class="rn">${esc(p.slice(i + 1))}</span>`;
   }
+  const pathLabel = p => `<button type="button" class="rp" data-act="peek" data-p="${esc(p)}" aria-label="${esc(t('preview', { path: p }))}">${pathSpans(p)}</button>`;
   // `p` must already be escaped.
   const eyeBtn = p => `<button class="eye" type="button" data-act="peek" data-p="${p}" aria-label="${esc(t('preview', { path: p }))}" title="${esc(t('previewTitle'))}"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>`;
 
@@ -47,10 +46,15 @@
     sel: new Set(), open: new Set(), q: '',
     budgets: {}, budget: 'small', split: false, stripDocs: true, stripComments: false, maxFileKb: 200,
     rules: [], rel: { enabled: true, depth: 1, rules: {} }, depthByRule: {},
-    presets: {}, suggestions: [], preview: null, exp: null,
+    presets: {}, suggestions: [], relGroups: [], relClosed: new Set(), preview: null, exp: null,
+    // Blocks of lines removed from selected files: { path: { hash, ranges: [[first, last], …] } } (see src/cuts.js).
+    cuts: {}, fOrder: 'size',
     secretAck: false, relSeq: 0, prevSeq: 0, loaded: false,
   };
-  const view = { mode: null, path: null, text: '', secretLines: new Set(), parts: [], part: 1, marks: [], cur: -1, capped: false };
+  const view = {
+    mode: null, path: null, text: '', secretLines: new Set(), parts: [], part: 1, marks: [], cur: -1, capped: false,
+    file: null, hash: null, rows: [], blocks: [], markerAt: new Map(), anchorRow: null, pending: [],
+  };
   let storeKey = 'ctxpack';
 
   // ---- persistence (per project, per browser) ----
@@ -58,10 +62,13 @@
     try { return JSON.parse(localStorage.getItem(storeKey) || '{}'); } catch { return {}; }
   }
   function persist() {
+    // A file taken out of the selection loses its cuts.
+    for (const p of Object.keys(st.cuts)) if (!st.sel.has(p)) delete st.cuts[p];
     try {
       localStorage.setItem(storeKey, JSON.stringify({
         sel: [...st.sel], task: $('task').value, budget: st.budget,
-        split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments,
+        split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments, relClosed: [...st.relClosed],
+        cuts: st.cuts, fOrder: st.fOrder,
       }));
     } catch {}
   }
@@ -179,6 +186,7 @@
   function renderRelated() {
     const body = $('relBody');
     const list = st.suggestions;
+    hidePop();
     $('relCount').textContent = st.rel.enabled ? t('suggestions', { n: list.length }) : t('off');
     if (!st.rel.enabled) {
       body.innerHTML = `<div class="empty">${esc(t('relOffEmpty'))}</div>`;
@@ -194,12 +202,111 @@
     }
     const sum = list.reduce((s, r) => s + r.tokens, 0);
     const lvl1 = list.filter(r => r.level === 1).length;
-    body.innerHTML = `<ul class="sug scroll">${list.map(r => `<li>
-        ${fileLabel(r.path)}
-        <span class="add"><span class="tok">${fmt(r.tokens)}</span><button class="btn add-btn" type="button" data-act="addOne" data-p="${esc(r.path)}" aria-label="${esc(t('add', { path: r.path }))}" title="${esc(t('addToSel'))}">+</button></span>
-        <span class="why"><span class="lvl">L${r.level}</span><em>${esc(t('rule.' + r.rule))}</em> · ${esc(r.reason)}${r.level > 1 ? ` · ${esc(t('from', { name: basename(r.from) }))}` : ''}</span>
-      </li>`).join('')}</ul>
+    const groups = st.relGroups.map(g => [g, list.filter(r => r.group === g)]).filter(([, items]) => items.length);
+    body.innerHTML = `<div class="sug scroll">${groups.map(([g, items]) => {
+      const name = t('group.' + g);
+      const open = !st.relClosed.has(g);
+      const tok = items.reduce((s, r) => s + r.tokens, 0);
+      return `<section class="sg">
+        <div class="sg-h"><button class="chev" type="button" data-act="relGroup" data-g="${g}" aria-expanded="${open}" aria-label="${esc(t(open ? 'collapseGroup' : 'expandGroup', { name }))}"></button><button class="sg-name" type="button" data-act="relGroup" data-g="${g}">${esc(name)}</button><span class="sg-n">${items.length}</span><span class="tok">${fmt(tok)}</span><button class="btn add-btn" type="button" data-act="addGroup" data-g="${g}" aria-label="${esc(t('addGroup', { name }))}" title="${esc(t('addGroup', { name }))}">+</button></div>
+        ${open ? `<ul>${items.map(r => `<li data-i="${list.indexOf(r)}">${pathLabel(r.path)}${r.level > 1 ? `<span class="lvl">L${r.level}</span>` : ''}<span class="tok">${fmt(r.tokens)}</span><button class="btn add-btn" type="button" data-act="addOne" data-p="${esc(r.path)}" aria-label="${esc(t('add', { path: r.path }))}" title="${esc(t('addToSel'))}">+</button></li>`).join('')}</ul>` : ''}
+      </section>`;
+    }).join('')}</div>
       <div class="sugfoot"><span>${esc(t('totalTokens', { n: fmt(sum) }))}</span><span class="actions">${lvl1 && lvl1 < list.length ? `<button class="btn" type="button" data-act="addLevel1">${esc(t('level1Only', { n: lvl1 }))}</button>` : ''}<button class="btn solid" type="button" data-act="addAll">${esc(t('addAll'))}</button></span></div>`;
+  }
+
+  // ---- related: hover popup with the code a file was found from ----
+  const pop = { li: null, pt: null, showTimer: 0, hideTimer: 0 };
+  const POP_MIN_W = 420;
+  const POP_MAX_W = 640;
+  const POP_GAP = 18;
+
+  function popHtml(r) {
+    const head = `<div class="pop-h"><em>${esc(t('rule.' + r.rule))}</em> · ${esc(r.reason)}${r.level > 1 ? ` · ${esc(t('from', { name: basename(r.from) }))}` : ''}</div>`;
+    if (!r.sites.length) return head + `<div class="note">${esc(t('byName'))}</div>`;
+    const sites = r.sites.map(s => {
+      const hits = new Set(s.lines);
+      const code = window.CTXPACK_HL.highlight(s.code, s.file).split('\n')
+        .map((line, i) => `<span class="${hits.has(s.start + i) ? 'hit' : ''}"><span class="ln">${s.start + i}</span>${line}</span>`).join('\n');
+      return `<div class="pop-f">${esc(s.file)}<span>:${s.lines.join(', ')}</span></div><pre class="code">${code}</pre>`;
+    }).join('');
+    return head + sites + (r.moreSites ? `<div class="note">${esc(t('morePlaces', { n: r.moreSites }))}</div>` : '');
+  }
+
+  // To the right of the cursor (narrowed to fit), or to its left when the right side is too tight.
+  // Without a cursor (keyboard focus) it is anchored to the start of the file name.
+  function placePop(li, pt) {
+    const el = $('relPop');
+    const row = li.getBoundingClientRect();
+    const { x, y } = pt || { x: li.querySelector('.rn')?.getBoundingClientRect().left ?? row.left, y: row.bottom };
+    const vw = document.documentElement.clientWidth;
+    const vh = window.innerHeight;
+    const right = vw - x - POP_GAP - 8;
+    const onRight = right >= POP_MIN_W || right >= x - POP_GAP - 8;
+    el.style.width = `${Math.max(240, Math.min(POP_MAX_W, onRight ? right : x - POP_GAP - 8))}px`;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = onRight ? x + POP_GAP : x - POP_GAP - w;
+    const top = Math.min(y + 8, vh - h - 8);
+    el.style.left = `${Math.round(Math.max(8, left))}px`;
+    el.style.top = `${Math.round(Math.max(8, top))}px`;
+  }
+
+  function showPop(li, pt) {
+    clearTimeout(pop.hideTimer);
+    const r = st.suggestions[Number(li.dataset.i)];
+    if (!r) return;
+    if (pop.li !== li) {
+      pop.li?.classList.remove('hover');
+      pop.li = li;
+      li.classList.add('hover');
+      const el = $('relPop');
+      el.innerHTML = popHtml(r);
+      el.hidden = false;
+      placePop(li, pt);
+    }
+  }
+
+  function hidePop() {
+    clearTimeout(pop.showTimer);
+    clearTimeout(pop.hideTimer);
+    pop.li?.classList.remove('hover');
+    pop.li = null;
+    $('relPop').hidden = true;
+  }
+
+  const hidePopSoon = () => {
+    clearTimeout(pop.showTimer);
+    clearTimeout(pop.hideTimer);
+    pop.hideTimer = setTimeout(hidePop, 160);
+  };
+
+  function bindPop() {
+    const body = $('relBody');
+    body.addEventListener('mouseover', e => {
+      const li = e.target.closest('li[data-i]');
+      if (!li) return;
+      clearTimeout(pop.hideTimer);
+      clearTimeout(pop.showTimer);
+      if (pop.li === li) return;
+      // Instant when moving between rows with the popup already open; otherwise at where the cursor rests.
+      if (pop.li) showPop(li, { x: e.clientX, y: e.clientY });
+      else pop.showTimer = setTimeout(() => showPop(li, pop.pt), 280);
+    });
+    body.addEventListener('mousemove', e => { pop.pt = { x: e.clientX, y: e.clientY }; });
+    body.addEventListener('mouseout', e => {
+      if (!e.relatedTarget || !e.relatedTarget.closest?.('#relPop, li[data-i]')) hidePopSoon();
+    });
+    body.addEventListener('focusin', e => {
+      const li = e.target.closest('li[data-i]');
+      if (li) showPop(li);
+    });
+    body.addEventListener('focusout', hidePopSoon);
+    body.addEventListener('scroll', hidePop, true);
+    $('relPop').addEventListener('mouseenter', () => clearTimeout(pop.hideTimer));
+    $('relPop').addEventListener('mouseleave', hidePopSoon);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && pop.li) hidePop(); });
+    window.addEventListener('resize', hidePop);
   }
 
   function renderOutput() {
@@ -235,10 +342,12 @@
       (warns.length > shown.length ? `<div class="note">${esc(t('andMore', { n: warns.length - shown.length }))}</div>` : '') +
       (!st.sel.size ? `<div class="note">${esc(t('nothingSelected'))}</div>` : '');
 
-    const top = [...pv.files].sort((a, b2) => b2.tokens - a.tokens).slice(0, 5);
-    const max = top.length ? top[0].tokens || 1 : 1;
-    $('heavyWrap').hidden = !top.length;
-    $('heavy').innerHTML = top.map(f => `<div class="hv"><div class="n"><i style="width:${(f.tokens / max) * 100}%"></i>${fileLabel(f.path)}</div><span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="${esc(t('remove', { path: f.path }))}">×</button></div>`).join('');
+    // Every exported file, by size or in project order (the export comes in project order).
+    const files = st.fOrder === 'size' ? [...pv.files].sort((a, b2) => b2.tokens - a.tokens) : pv.files;
+    const max = Math.max(1, ...files.map(f => f.tokens));
+    $('heavyWrap').hidden = !files.length;
+    $('fOrder').querySelectorAll('button').forEach(btn => btn.setAttribute('aria-pressed', String(btn.dataset.v === st.fOrder)));
+    $('heavy').innerHTML = files.map(f => `<div class="hv"><div class="n"><i style="width:${(f.tokens / max) * 100}%"></i>${pathLabel(f.path)}</div>${f.cutLines ? `<button type="button" class="cut-b" data-act="restoreFile" data-p="${esc(f.path)}" title="${esc(t('cutBadgeTitle', { n: f.cutLines }))}">${esc(t('cutBadge', { n: f.cutLines }))}</button>` : '<span></span>'}<span class="t">${fmt(f.tokens)}</span><button type="button" data-act="drop" data-p="${esc(f.path)}" aria-label="${esc(t('remove', { path: f.path }))}">×</button></div>`).join('');
 
     const multi = pv.parts.length > 1;
     $('partsWrap').hidden = !multi;
@@ -264,6 +373,7 @@
   const exportBody = () => ({
     selected: [...st.sel], task: $('task').value, budget: st.budget,
     split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments,
+    cuts: Object.fromEntries(Object.entries(st.cuts).filter(([p]) => st.sel.has(p))),
   });
 
   // Removing all comments already removes the IDE-helper tags, so that box is shown checked and locked.
@@ -285,6 +395,7 @@
       const r = await api('/api/related', { selected: [...st.sel], related: relOverride() });
       if (seq !== st.relSeq) return;
       st.suggestions = r.suggestions;
+      st.relGroups = r.groups;
     } catch (err) {
       toast(err.message);
     }
@@ -299,7 +410,13 @@
       const r = await api('/api/preview', exportBody());
       if (seq !== st.prevSeq) return;
       st.preview = r;
+      // The file changed on disk: its cuts no longer match its lines.
+      if (r.staleCuts?.length) {
+        r.staleCuts.forEach(p => delete st.cuts[p]);
+        persist();
+      }
       renderOutput();
+      if ($('viewer').open && view.mode === 'result') renderNav();
     } catch (err) {
       toast(err.message);
     }
@@ -473,13 +590,22 @@
     view.mode = mode;
     view.text = '';
     view.secretLines = new Set();
+    view.file = null;
+    view.hash = null;
+    view.blocks = [];
+    view.markerAt = new Map();
+    view.anchorRow = null;
+    hideCutBtn();
     $('vTitle').textContent = title;
     $('vMeta').textContent = t('loading');
     $('vWarn').innerHTML = '';
     $('vTabs').innerHTML = '';
     $('vToggle').hidden = $('vIde').hidden = mode !== 'file';
+    $('vRestore').hidden = true;
     $('vCopy').hidden = mode !== 'result';
     $('vCode').classList.toggle('wrap', mode === 'result');
+    $('vCode').classList.toggle('numbered', mode === 'file');
+    renderNav();
     renderView();
     if (!$('viewer').open) $('viewer').showModal();
     $('vQ').focus();
@@ -492,6 +618,18 @@
     $('vToggle').classList.toggle('solid', !on);
   }
 
+  // Cuts made against another version of the file are not shown (the server drops them too).
+  const fileCuts = () => (view.hash && st.cuts[view.path]?.hash === view.hash ? st.cuts[view.path].ranges : []);
+  const rangeLines = ranges => ranges.reduce((s, [a, b]) => s + b - a + 1, 0);
+
+  function updateFileMeta() {
+    const f = view.file;
+    if (!f) return;
+    const cut = rangeLines(fileCuts());
+    $('vMeta').textContent = t('fileMeta', { lines: f.lines, tokens: fmt(f.tokens) }) + (f.language ? ' · ' + f.language : '') + (cut ? ' · ' + t('cutMeta', { n: cut }) : '');
+    $('vRestore').hidden = !cut;
+  }
+
   async function peek(path) {
     view.path = path;
     openViewer('file', path);
@@ -501,13 +639,16 @@
     try {
       const f = await api('/api/file', { path });
       if (view.mode !== 'file' || view.path !== path) return;
-      $('vMeta').textContent = t('fileMeta', { lines: f.lines, tokens: fmt(f.tokens) }) + (f.language ? ' · ' + f.language : '');
+      view.file = f;
+      view.hash = f.hash;
       view.text = f.content;
       view.secretLines = new Set(f.secrets.map(s => s.line));
+      updateFileMeta();
       const notes = [];
       if (view.secretLines.size) notes.push(`<div class="warn-i">${esc(t('secretLines', { lines: [...view.secretLines].join(', ') }))}</div>`);
       if (f.truncated) notes.push(`<div class="note">${esc(t('truncated'))}</div>`);
       if (!f.exportable) notes.push(`<div class="note">${esc(t('notExportable', { kb: st.maxFileKb }))}</div>`);
+      else notes.push(`<div class="note">${esc(t('cutHint'))}</div>`);
       $('vWarn').innerHTML = notes.join('');
       renderView();
     } catch (err) {
@@ -518,13 +659,14 @@
 
   async function openResult(index) {
     openViewer('result', t('resultTitle'));
+    $('vWarn').innerHTML = `<div class="note">${esc(t('cutHintResult'))}</div>`;
     const r = await exportNow();
     if (view.mode !== 'result') return;
     view.parts = r.parts;
     showPart(Math.min(index || 1, r.parts.length));
   }
 
-  function showPart(index) {
+  function showPart(index, { keepScroll = false } = {}) {
     view.part = index;
     const part = view.parts[index - 1];
     const multi = view.parts.length > 1;
@@ -533,39 +675,283 @@
     $('vCopy').dataset.i = String(index);
     $('vCopy').textContent = multi ? t('copyPartN', { i: index }) : t('copyMd');
     view.text = part.markdown;
-    renderView();
+    // Each file's content lines run from `start` to the closing fence; `map` gives their file lines.
+    const lines = part.markdown.split('\n');
+    view.markerAt = new Map();
+    view.blocks = (part.blocks || []).map(b => {
+      const fence = /^`+/.exec(lines[b.start - 1] || '')?.[0];
+      const close = fence ? lines.indexOf(fence, b.start) : -1;
+      b.markers.forEach(m => view.markerAt.set(b.start + m.line, { path: b.path, range: m.range }));
+      return { ...b, end: close < 0 ? b.start + b.map.length : close };
+    });
+    renderNav();
+    renderView({ keepScroll });
   }
 
-  // Renders line by line so a file keeps its line numbers and secret highlighting under search marks.
-  function renderView() {
+  // Re-export after a cut or restore and show the same part at the same place.
+  async function reloadResult() {
+    try {
+      const r = await exportNow();
+      if (view.mode !== 'result') return;
+      view.parts = r.parts;
+      showPart(Math.min(view.part, r.parts.length), { keepScroll: true });
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  // ---- viewer: file navigation in the result ----
+  function renderNav() {
+    const nav = $('vNav');
+    nav.hidden = view.mode !== 'result' || !view.blocks.length;
+    if (nav.hidden) {
+      nav.innerHTML = '';
+      return;
+    }
+    const tokens = new Map((st.preview?.files || []).map(f => [f.path, f]));
+    nav.innerHTML = `<div class="lbl">${esc(t('navFiles'))} · ${view.blocks.length}</div>` + view.blocks.map((b, i) => {
+      const f = tokens.get(b.path);
+      return `<button type="button" class="nv" data-act="vGo" data-i="${i}" title="${esc(b.path)}"><span class="rp">${pathSpans(b.path)}</span>${f?.cutLines ? '<span class="nv-cut">✂</span>' : ''}${f ? `<span class="tok">${fmt(f.tokens)}</span>` : ''}</button>`;
+    }).join('');
+    syncNav();
+  }
+
+  const rowEl = i => $('vCode').querySelector(`[data-l="${i}"]`);
+
+  function goToBlock(i) {
+    const el = rowEl(view.blocks[i]?.heading);
+    if (el) $('vScroll').scrollTop = el.offsetTop - 8;
+  }
+
+  // Marks the file whose heading is the last one above the top of the code.
+  function syncNav() {
+    if (view.mode !== 'result' || !view.blocks.length) return;
+    const top = $('vScroll').scrollTop + 24;
+    let on = 0;
+    view.blocks.forEach((b, i) => {
+      const el = rowEl(b.heading);
+      if (el && el.offsetTop <= top) on = i;
+    });
+    $('vNav').querySelectorAll('.nv').forEach((btn, i) => btn.classList.toggle('on', i === on));
+  }
+
+  // Syntax tokens of one line with search marks laid over them: a <mark> may span several tokens,
+  // so marks stay outside and the token spans are cut at the mark edges.
+  function paintLine(segs, ranges) {
+    let out = '';
+    let pos = 0;
+    let r = 0;
+    let inMark = false;
+    for (const [kind, text] of segs) {
+      let i = 0;
+      while (i < text.length) {
+        const at = pos + i;
+        if (inMark && at === ranges[r][1]) { out += '</mark>'; inMark = false; r++; continue; }
+        if (!inMark && r < ranges.length && at === ranges[r][0]) { out += '<mark>'; inMark = true; continue; }
+        const stop = inMark ? ranges[r][1] : r < ranges.length ? ranges[r][0] : Infinity;
+        const end = Math.min(text.length, stop - pos);
+        out += window.CTXPACK_HL.span([kind, text.slice(i, end)]);
+        i = end;
+      }
+      pos += text.length;
+    }
+    return inMark ? out + '</mark>' : out;
+  }
+
+  // What the viewer shows, one row per line. A file shows its cut blocks folded into one row each;
+  // the result shows the comment the export put in their place.
+  function viewRows() {
+    const rows = [];
+    if (view.mode === 'file') {
+      const cuts = fileCuts();
+      let c = 0;
+      for (let i = 0; i < view.lexed.length; i++) {
+        const n = i + 1;
+        if (cuts[c] && n === cuts[c][0]) {
+          rows.push({ cut: cuts[c] });
+          i = cuts[c][1] - 1;
+          c++;
+          continue;
+        }
+        rows.push({ n, segs: view.lexed[i] });
+      }
+    } else {
+      view.lexed.forEach((segs, j) => rows.push({ segs, marker: view.markerAt.get(j) }));
+    }
+    return rows;
+  }
+
+  const cutText = ([a, b]) => (a === b ? t('cutRowOne', { a }) : t('cutRow', { n: b - a + 1, a, b }));
+  const restoreBtn = (path, [a, b]) => `<button type="button" class="link-btn" data-act="uncut" data-p="${esc(path)}" data-a="${a}" data-b="${b}">${esc(t('restore'))}</button>`;
+
+  // Renders line by line so a file keeps its line numbers, syntax colors and secret highlighting under search marks.
+  // Lexing is cached per text, so typing in the search box only re-lays the marks.
+  function renderView({ keepScroll = false } = {}) {
     const q = $('vQ').value.toLowerCase();
     const numbered = view.mode === 'file';
+    const scroll = $('vScroll').scrollTop;
     let hits = 0;
     view.capped = false;
     view.renderedQ = q;
-    const html = view.text.split('\n').map((line, i) => {
-      let body = '';
-      if (!q) {
-        body = esc(line);
-      } else {
-        const low = line.toLowerCase();
-        let from = 0;
-        for (let at = low.indexOf(q); at !== -1; at = low.indexOf(q, from)) {
+    hideCutBtn();
+    if (view.lexedText !== view.text || view.lexedPath !== view.path || view.lexedMode !== view.mode) {
+      const hl = window.CTXPACK_HL;
+      view.lexed = view.mode === 'file' ? hl.lexFile(view.text, view.path || '') : hl.lexMarkdown(view.text);
+      view.lexedText = view.text;
+      view.lexedPath = view.path;
+      view.lexedMode = view.mode;
+    }
+    view.rows = view.text ? viewRows() : [];
+    const html = view.rows.map((r, i) => {
+      if (r.cut) return `<span class="l cut-row" data-l="${i}"><span class="ln">⋯</span>✂ ${esc(cutText(r.cut))} · ${restoreBtn(view.path, r.cut)}</span>`;
+      const ranges = [];
+      if (q) {
+        const low = r.segs.map(s => s[1]).join('').toLowerCase();
+        for (let at = low.indexOf(q); at !== -1; at = low.indexOf(q, at + q.length)) {
           if (hits === MAX_HITS) { view.capped = true; break; }
-          body += esc(line.slice(from, at)) + `<mark>${esc(line.slice(at, at + q.length))}</mark>`;
-          from = at + q.length;
+          ranges.push([at, at + q.length]);
           hits++;
         }
-        body += esc(line.slice(from));
       }
-      if (view.secretLines.has(i + 1)) body = `<span class="secret">${body}</span>`;
-      return numbered ? `<span class="ln">${i + 1}</span>${body}` : body;
+      let body = paintLine(r.segs, ranges);
+      if (numbered && view.secretLines.has(r.n)) body = `<span class="secret">${body}</span>`;
+      if (r.marker) body = `<span class="marker">${body}</span> ${restoreBtn(r.marker.path, r.marker.range)}`;
+      return `<span class="l" data-l="${i}">${numbered ? `<span class="ln" data-act="pickLine" data-i="${i}">${r.n}</span>` : ''}${body}</span>`;
     }).join('\n');
     $('vCode').innerHTML = html;
+    if (keepScroll) $('vScroll').scrollTop = scroll;
     view.marks = [...$('vCode').querySelectorAll('mark')];
     view.cur = -1;
-    if (view.marks.length) stepView(0, true);
+    if (view.marks.length && !keepScroll) stepView(0, true);
     else updateViewCount();
+    syncNav();
+  }
+
+  // ---- viewer: cutting blocks of lines ----
+  // File lines behind viewer rows a..b, per file: [{ path, hash, a, b }].
+  function cutTargets(a, b) {
+    const out = new Map();
+    const add = (path, hash, x, y) => {
+      const cur = out.get(path);
+      out.set(path, cur ? { ...cur, a: Math.min(cur.a, x), b: Math.max(cur.b, y) } : { path, hash, a: x, b: y });
+    };
+    for (let i = a; i <= b; i++) {
+      const r = view.rows[i];
+      if (!r) continue;
+      if (view.mode === 'file') {
+        if (!view.hash || !view.file?.exportable) return [];
+        if (r.cut) add(view.path, view.hash, r.cut[0], r.cut[1]);
+        else add(view.path, view.hash, r.n, r.n);
+        continue;
+      }
+      const block = view.blocks.find(bl => i >= bl.start && i < bl.end);
+      if (!block) continue;
+      if (r.marker) add(block.path, block.hash, r.marker.range[0], r.marker.range[1]);
+      else if (block.map[i - block.start]) add(block.path, block.hash, block.map[i - block.start], block.map[i - block.start]);
+    }
+    return [...out.values()];
+  }
+
+  // The viewer row a DOM point is in; a point between rows (on the "\n") counts as the row before it.
+  function rowAt(node, offset) {
+    const code = $('vCode');
+    let el = node.nodeType === 3 ? node.parentElement : node;
+    if (el === code) {
+      const kid = node.nodeType === 3 ? node : code.childNodes[Math.min(offset, code.childNodes.length - 1)];
+      el = kid?.nodeType === 1 ? kid : kid?.previousElementSibling || kid?.nextElementSibling;
+    }
+    const row = el?.closest?.('[data-l]');
+    return row && code.contains(row) ? Number(row.dataset.l) : -1;
+  }
+
+  function selectedRows() {
+    const sel = getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return null;
+    const range = sel.getRangeAt(0);
+    if (!$('vCode').contains(range.commonAncestorContainer) && range.commonAncestorContainer !== $('vCode')) return null;
+    const a = rowAt(range.startContainer, range.startOffset);
+    let b = rowAt(range.endContainer, range.endOffset);
+    if (a < 0 || b < 0) return null;
+    // A drag that ends at the very start of a line does not take that line.
+    if (b > a) {
+      const head = document.createRange();
+      head.setStart(rowEl(b), 0);
+      head.setEnd(range.endContainer, range.endOffset);
+      if (!head.toString()) b--;
+    }
+    return [a, b];
+  }
+
+  function showCutBtn(rows, x, y) {
+    const items = rows ? cutTargets(rows[0], rows[1]) : [];
+    view.pending = items;
+    const btn = $('vCutBtn');
+    if (!items.length) return hideCutBtn();
+    const lines = items.reduce((s, it) => s + it.b - it.a + 1, 0);
+    btn.textContent = items.length > 1 ? t('cutFiles', { n: lines, files: items.length })
+      : items[0].a === items[0].b ? t('cutLine', { a: items[0].a }) : t('cutLines', { a: items[0].a, b: items[0].b });
+    btn.hidden = false;
+    btn.style.left = `${Math.round(Math.min(x + 10, innerWidth - btn.offsetWidth - 12))}px`;
+    btn.style.top = `${Math.round(Math.min(y + 14, innerHeight - btn.offsetHeight - 12))}px`;
+  }
+
+  function hideCutBtn() {
+    view.pending = [];
+    $('vCutBtn').hidden = true;
+  }
+
+  // ---- cuts state ----
+  function mergeRanges(list) {
+    const out = [];
+    for (const r of [...list].sort((x, y) => x[0] - y[0])) {
+      const last = out[out.length - 1];
+      if (last && r[0] <= last[1] + 1) last[1] = Math.max(last[1], r[1]);
+      else out.push([...r]);
+    }
+    return out;
+  }
+
+  function addCuts(items) {
+    for (const { path, hash, a, b } of items) {
+      const cur = st.cuts[path];
+      const ranges = cur && cur.hash === hash ? cur.ranges : [];
+      st.cuts[path] = { hash, ranges: mergeRanges([...ranges, [a, b]]) };
+      // Cuts only apply to exported files, so cutting a file selects it.
+      if (!st.sel.has(path)) {
+        st.sel.add(path);
+        openAncestors([path]);
+        renderTree();
+        if (view.mode === 'file') updatePeekToggle();
+      }
+    }
+    getSelection().removeAllRanges();
+    cutsChanged();
+  }
+
+  function removeCut(path, a, b) {
+    const cur = st.cuts[path];
+    if (!cur) return;
+    cur.ranges = cur.ranges.filter(([x, y]) => y < a || x > b);
+    if (!cur.ranges.length) delete st.cuts[path];
+    cutsChanged();
+  }
+
+  function restoreFile(path) {
+    delete st.cuts[path];
+    cutsChanged();
+  }
+
+  function cutsChanged() {
+    persist();
+    st.exp = null;
+    refresh({ related: false });
+    if (!$('viewer').open) return;
+    if (view.mode === 'file') {
+      updateFileMeta();
+      renderView({ keepScroll: true });
+    } else if (view.mode === 'result') {
+      reloadResult();
+    }
   }
 
   function stepView(delta, absolute = false) {
@@ -630,6 +1016,17 @@
         st.sel.add(p);
         openAncestors([p]);
         break;
+      case 'relGroup':
+        if (st.relClosed.has(el.dataset.g)) st.relClosed.delete(el.dataset.g); else st.relClosed.add(el.dataset.g);
+        renderRelated();
+        persist();
+        return;
+      case 'addGroup': {
+        const list = st.suggestions.filter(s => s.group === el.dataset.g).map(s => s.path);
+        list.forEach(x => st.sel.add(x));
+        openAncestors(list);
+        break;
+      }
       case 'addAll':
       case 'addLevel1': {
         const list = st.suggestions.filter(s => el.dataset.act === 'addAll' || s.level === 1).map(s => s.path);
@@ -641,6 +1038,7 @@
         st.sel.delete(p);
         break;
       case 'peek':
+        hidePop();
         peek(p);
         return;
       case 'vToggle':
@@ -692,6 +1090,41 @@
       case 'vClose':
         $('viewer').close();
         return;
+      case 'fOrder':
+        st.fOrder = el.dataset.v;
+        persist();
+        renderOutput();
+        return;
+      case 'restoreFile':
+        restoreFile(p);
+        return;
+      case 'vRestore':
+        restoreFile(view.path);
+        return;
+      case 'uncut':
+        removeCut(p, Number(el.dataset.a), Number(el.dataset.b));
+        return;
+      case 'vCut':
+        if (view.pending.length) addCuts(view.pending);
+        hideCutBtn();
+        return;
+      case 'vGo':
+        goToBlock(Number(el.dataset.i));
+        return;
+      case 'pickLine': {
+        // Click a line number to pick that line, Shift+click to stretch the pick from the last one.
+        const i = Number(el.dataset.i);
+        const from = e.shiftKey && view.anchorRow !== null ? view.anchorRow : i;
+        if (!e.shiftKey) view.anchorRow = i;
+        const [a, b] = [Math.min(from, i), Math.max(from, i)];
+        const range = document.createRange();
+        range.setStartBefore(rowEl(a));
+        range.setEndAfter(rowEl(b));
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        showCutBtn([a, b], e.clientX, e.clientY);
+        return;
+      }
       case 'savePreset':
         savePreset();
         return;
@@ -725,6 +1158,20 @@
       if (el.value) applyPreset(el.value).catch(err => toast(err.message));
     }
   });
+
+  // Selecting text in the viewer offers to cut those lines; the button keeps the selection when pressed.
+  $('vCode').addEventListener('mouseup', e => {
+    if (e.target.closest('[data-act]')) return;
+    setTimeout(() => showCutBtn(selectedRows(), e.clientX, e.clientY));
+  });
+  $('vCode').addEventListener('mousedown', e => { if (!e.target.closest('.ln')) hideCutBtn(); });
+  $('vCutBtn').addEventListener('mousedown', e => e.preventDefault());
+  $('vScroll').addEventListener('scroll', () => {
+    hideCutBtn();
+    cancelAnimationFrame(syncNav.raf);
+    syncNav.raf = requestAnimationFrame(syncNav);
+  });
+  $('viewer').addEventListener('close', hideCutBtn);
 
   // A click on the backdrop lands on the <dialog> itself (it has no padding).
   $('viewer').addEventListener('click', e => {
@@ -854,6 +1301,9 @@
       st.split = !!saved.split;
       st.stripDocs = saved.stripDocs !== false;
       st.stripComments = !!saved.stripComments;
+      if (Array.isArray(saved.relClosed)) st.relClosed = new Set(saved.relClosed);
+      if (saved.cuts && typeof saved.cuts === 'object') st.cuts = saved.cuts;
+      if (saved.fOrder === 'tree') st.fOrder = 'tree';
       syncToggles();
       openAncestors([...st.sel]);
 
@@ -866,5 +1316,15 @@
     }
   }
 
+  // Panels stretch down to the bottom of the screen; the header above them can wrap to several lines.
+  function trackGridTop() {
+    const set = () => document.documentElement.style.setProperty('--grid-top', `${Math.round(document.querySelector('.grid').getBoundingClientRect().top + window.scrollY)}px`);
+    new ResizeObserver(set).observe(document.querySelector('.bar'));
+    window.addEventListener('resize', set);
+    set();
+  }
+
+  bindPop();
+  trackGridTop();
   init();
 })();

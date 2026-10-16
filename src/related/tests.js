@@ -1,4 +1,4 @@
-import { escapeRe } from './util.js';
+import { escapeRe, lineHits, sitesIn } from './util.js';
 
 const CODE = /\.(?:php|vue|js|mjs|ts|jsx|tsx)$/;
 const isTest = p => p.startsWith('tests/') || /(?:^|\/)__tests__\//.test(p) || /\.(?:test|spec)\.\w+$/.test(p);
@@ -19,7 +19,10 @@ export const testRules = [
       const out = [];
       for (const t of testFiles(ctx)) {
         if (out.length >= MAX_PER_FILE) break;
-        if (re.test(ctx.read(t))) out.push({ path: t, reason: `mentions ${base}` });
+        const text = ctx.read(t);
+        const lines = lineHits(text, re, { max: 2, imports: false });
+        if (!lines.length) lines.push(...lineHits(text, re, { max: 1 }));
+        if (lines.length) out.push({ path: t, reason: `mentions ${base}`, sites: sitesIn(t, lines) });
       }
       return out;
     },
