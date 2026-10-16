@@ -122,6 +122,8 @@ window.CTXPACK_I18N = {
     split: 'Split to fit the limit',
     stripDocs: 'Strip @property/@method from class PHPDoc',
     stripComments: 'Remove all comments',
+    stripImports: 'Remove imports',
+    stripImportsTitle: 'PHP use and JS/TS/Vue import lines. Keep them when the referenced classes are not in the context or the model has to write code.',
     savedLine: 'Removed −{tokens} tokens (−{pct}%) in {files} files',
 
     secretsConfirm: 'The selected files contain possible secrets (see warnings). Click again to copy.',
@@ -286,6 +288,8 @@ window.CTXPACK_I18N = {
     split: 'Розбивати під ліміт',
     stripDocs: 'Прибирати @property/@method з PHPDoc класів',
     stripComments: 'Прибрати всі коментарі',
+    stripImports: 'Прибрати імпорти',
+    stripImportsTitle: 'Рядки use у PHP та import у JS/TS/Vue. Лишайте їх, якщо класів, на які вони посилаються, немає в контексті або модель має писати код.',
     savedLine: 'Прибрано −{tokens} токенів (−{pct}%) у файлах: {files}',
 
     secretsConfirm: 'У вибраних файлах є можливі секрети (див. попередження). Натисніть ще раз, щоб скопіювати.',

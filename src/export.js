@@ -13,9 +13,10 @@ export function readText(root, rel) {
 }
 
 // entries: scan result files. budget: { limit, reserve } or null (no limit).
-// stripDocs: drop IDE-helper tags from class docblocks; stripComments: drop every comment (for comparing size).
+// stripDocs: drop IDE-helper tags from class docblocks; stripComments: drop every comment (for comparing size);
+// stripImports: drop PHP `use` and JS/TS/Vue `import` statements.
 // cuts: { path: { hash, ranges: [[first, last], …] } }, blocks of lines removed in the UI (see src/cuts.js).
-export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, stripDocs = true, stripComments = false, cuts = {}, now = new Date(), lang = 'en' }) {
+export function buildExport({ root, name, entries, cfg, selected, task = '', budget = null, split = false, stripDocs = true, stripComments = false, stripImports = false, cuts = {}, now = new Date(), lang = 'en' }) {
   const ratio = cfg.tokenCharsRatio;
   const warnings = [];
   const byPath = new Map(entries.map(e => [e.path, e]));
@@ -60,7 +61,7 @@ export function buildExport({ root, name, entries, cfg, selected, task = '', bud
       warnings.push({ level: 'secret', text: t(lang, 'secret', { kind, path: p, line: hit.line }), path: p, line: hit.line });
     }
     const cutDone = applyCuts(original, ranges);
-    const transformed = transformContent(p, cutDone.text, { stripDocs, stripComments, docTags: cfg.stripDocTags });
+    const transformed = transformContent(p, cutDone.text, { stripDocs, stripComments, stripImports, docTags: cfg.stripDocTags });
     const { content, map, markers } = finishCuts(p, original, cutDone.text, cutDone.origin, transformed);
     const tokens = estimateTokens(content, ratio);
     const rawTokens = estimateTokens(original, ratio);

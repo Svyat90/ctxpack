@@ -63,6 +63,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
     split: !!body.split,
     stripDocs: body.stripDocs !== false,
     stripComments: !!body.stripComments,
+    stripImports: !!body.stripImports,
     cuts: pickCuts(body.cuts),
   });
 

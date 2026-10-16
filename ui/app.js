@@ -42,7 +42,7 @@
   const st = {
     name: '', root: '', git: false, files: [], byPath: new Map(), tree: null, dirs: new Map(),
     sel: new Set(), open: new Set(), q: '',
-    budgets: {}, budget: 'small', split: false, stripDocs: true, stripComments: false, maxFileKb: 200,
+    budgets: {}, budget: 'small', split: false, stripDocs: true, stripComments: false, stripImports: false, maxFileKb: 200,
     rules: [], rel: { enabled: true, depth: 1, rules: {} }, depthByRule: {},
     presets: {}, suggestions: [], relGroups: [], relClosed: new Set(), preview: null, exp: null,
     // Blocks of lines removed from selected files: { path: { hash, ranges: [[first, last], …] } } (see src/cuts.js).
@@ -65,7 +65,7 @@
     try {
       localStorage.setItem(storeKey, JSON.stringify({
         sel: [...st.sel], task: $('task').value, budget: st.budget,
-        split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments, relClosed: [...st.relClosed],
+        split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments, stripImports: st.stripImports, relClosed: [...st.relClosed],
         cuts: st.cuts, fOrder: st.fOrder,
       }));
     } catch {}
@@ -414,7 +414,7 @@
   const relOverride = () => ({ enabled: st.rel.enabled, depth: st.rel.depth, rules: st.rel.rules });
   const exportBody = () => ({
     selected: [...st.sel], task: $('task').value, budget: st.budget,
-    split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments,
+    split: st.split, stripDocs: st.stripDocs, stripComments: st.stripComments, stripImports: st.stripImports,
     cuts: Object.fromEntries(Object.entries(st.cuts).filter(([p]) => st.sel.has(p))),
   });
 
@@ -422,6 +422,7 @@
   function syncToggles() {
     $('split').checked = st.split;
     $('stripComments').checked = st.stripComments;
+    $('stripImports').checked = st.stripImports;
     $('stripDocs').checked = st.stripDocs || st.stripComments;
     $('stripDocs').disabled = st.stripComments;
   }
@@ -1238,7 +1239,7 @@
     } else if (el.id === 'depth') {
       st.rel.depth = Number(el.value);
       relSettingsChanged();
-    } else if (el.id === 'split' || el.id === 'stripDocs' || el.id === 'stripComments') {
+    } else if (el.id === 'split' || el.id === 'stripDocs' || el.id === 'stripComments' || el.id === 'stripImports') {
       st[el.id] = el.checked;
       syncToggles();
       persist();
@@ -1438,6 +1439,7 @@
       st.split = !!saved.split;
       st.stripDocs = saved.stripDocs !== false;
       st.stripComments = !!saved.stripComments;
+      st.stripImports = !!saved.stripImports;
       if (Array.isArray(saved.relClosed)) st.relClosed = new Set(saved.relClosed);
       if (saved.cuts && typeof saved.cuts === 'object') st.cuts = saved.cuts;
       if (saved.fOrder === 'tree') st.fOrder = 'tree';

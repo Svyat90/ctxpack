@@ -194,9 +194,43 @@ export function stripAllComments(path, src) {
 
 const isPhpSource = p => p.endsWith('.php') && !p.endsWith('.blade.php');
 
+// ---- imports ----
+
+// Top-level `use` statements of a PHP file, single or grouped (`use App\{A, B};`, also over several
+// lines). Only the head before the first declaration is touched, so trait `use` and closure `use (…)`
+// inside classes and functions stay.
+const PHP_DECL = /^(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum|function)\b|^return\b/m;
+const PHP_USE = /^use\s[^;]*;[ \t]*(?:\r?\n|$)/gm;
+
+// ES imports: `import x from '…'`, `import { a,\n b } from '…'`, `import type …`, `import '…'`.
+// Dynamic `import(…)` and `import.meta` are code and stay.
+const JS_IMPORT = /^[ \t]*import\b(?!\s*[.(])[^'"`;]*?['"][^'"\n]+['"](?:\s*(?:assert|with)\s*\{[^}]*\})?[ \t]*;?[ \t]*(?:\r?\n|$)/gm;
+
+export function stripAllImports(path, src) {
+  const ext = path.includes('.') ? path.split('.').pop().toLowerCase() : '';
+  let out;
+  if (isPhpSource(path)) {
+    const decl = PHP_DECL.exec(src);
+    const head = decl ? src.slice(0, decl.index) : src;
+    out = head.replace(PHP_USE, '') + (decl ? src.slice(decl.index) : '');
+  } else if (['js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx'].includes(ext)) {
+    out = src.replace(JS_IMPORT, '');
+  } else if (ext === 'vue') {
+    // A script that started with its imports does not start with a blank line now.
+    out = src.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/g, (m, open, body, close) => {
+      const rest = body.replace(JS_IMPORT, '');
+      return open + (rest === body ? body : rest.replace(/^\n(?:[ \t]*\n)+/, '\n')) + close;
+    });
+  } else {
+    return src;
+  }
+  return out === src ? src : tidy(out);
+}
+
 // Export-time transforms for one file. Removing all comments already covers the IDE-helper tags.
-export function transformContent(path, content, { stripDocs = true, stripComments = false, docTags = DEFAULT_DOC_TAGS } = {}) {
-  if (stripComments) return stripAllComments(path, content);
-  if (stripDocs && isPhpSource(path)) return stripClassDocTags(content, docTags);
-  return content;
+export function transformContent(path, content, { stripDocs = true, stripComments = false, stripImports = false, docTags = DEFAULT_DOC_TAGS } = {}) {
+  let out = content;
+  if (stripComments) out = stripAllComments(path, out);
+  else if (stripDocs && isPhpSource(path)) out = stripClassDocTags(out, docTags);
+  return stripImports ? stripAllImports(path, out) : out;
 }

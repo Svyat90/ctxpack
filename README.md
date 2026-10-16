@@ -33,6 +33,7 @@ The file tree is on the left, related-file suggestions in the middle, and the to
 - The **32K · small** profile gives 26K usable tokens (6K stay free for your prompt and the answer). **no limit** is for an agent without a limit.
 - **Split to fit the limit** divides the result into parts made of whole files. Each part has its own copy button.
 - **Strip @property/@method from class PHPDoc** (on by default) removes the `@property`, `@property-read`, `@property-write`, `@method` and `@mixin` lines that laravel-ide-helper writes above classes. A description in the same docblock stays; a block left empty is removed. Method docblocks are not touched.
+- **Remove imports** drops PHP `use` statements at the top of the file (trait `use` and closures stay) and `import` statements in JS/TS and in Vue `<script>`. Off by default: imports tell the model which class a short name means when that class is not in the context, and show the right paths when it writes code.
 - **Remove all comments** drops every comment in PHP, JS/TS, Vue, Blade, CSS/SCSS and HTML (string and regex literals stay), so you can compare how much smaller the context gets. The line under the counter shows the savings, e.g. "Removed −3.2K tokens (−14%) in 18 files".
 - **Selected files** lists every exported file with its tokens, **By size** or **As in project**.
 - **Removing blocks**: in a file preview or in the result, select lines (drag, or click a line number and Shift+click another) and press **✂ Remove lines…**. The block is left out of the export and a comment such as `// ctxpack: lines 40-120 removed` takes its place. **restore** next to a removed block, **Restore original** in the preview, or the **✂ −N** badge in Selected files bring the lines back. Removed blocks are kept in the browser per file; they are dropped when the file is taken out of the selection or changes on disk. A secret inside a removed block is not reported, since it is not exported.
@@ -49,6 +50,7 @@ ctxpack export ~/code/app --changed --related --split --budget small
 ctxpack export ~/code/app --preset "users feature" --copy
 ctxpack export ~/code/app --include "app/Services/**/*.php" --stdout > context.md
 ctxpack export ~/code/app --include app --strip-comments   # compare: the summary shows the tokens removed
+ctxpack export ~/code/app --include app --strip-imports
 ctxpack init ~/code/app     # create .ctxpack.json
 ```
 

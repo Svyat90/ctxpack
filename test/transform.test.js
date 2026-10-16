@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripClassDocTags, stripAllComments, transformContent } from '../src/transform.js';
+import { stripClassDocTags, stripAllComments, stripAllImports, transformContent } from '../src/transform.js';
 
 const MODEL = `<?php
 
@@ -167,4 +167,50 @@ test('transformContent only touches PHP sources and can be switched off', () => 
   assert.equal(transformContent('app/A.php', doc, { stripDocs: false }), doc);
   assert.equal(transformContent('resources/views/a.blade.php', doc), doc);
   assert.equal(transformContent('app/A.php', doc, { docTags: ['method'] }), doc);
+});
+
+test('stripAllImports: PHP use statements at the top go, trait and closure use stay', () => {
+  const src = `<?php
+
+namespace App\\Services;
+
+use App\\Models\\Order;
+use App\\Contracts\\{
+    Payable,
+    Loggable as Logs
+};
+use function App\\helper;
+
+final class Billing
+{
+    use Macroable;
+
+    public function run(Order $o) { return fn () => 1; $f = function () use ($o) {}; }
+}`;
+  assert.equal(stripAllImports('app/Services/Billing.php', src), `<?php
+
+namespace App\\Services;
+
+final class Billing
+{
+    use Macroable;
+
+    public function run(Order $o) { return fn () => 1; $f = function () use ($o) {}; }
+}`);
+  const migration = "<?php\n\nuse Illuminate\\Support\\Facades\\Schema;\n\nreturn new class extends Migration {};\n";
+  assert.equal(stripAllImports('database/migrations/x.php', migration), '<?php\n\nreturn new class extends Migration {};\n');
+});
+
+test('stripAllImports: JS/TS and Vue script imports go, dynamic import and import.meta stay', () => {
+  const js = "import a from './a';\nimport {\n  b,\n  c,\n} from \"@/b\";\nimport type { T } from 'types'\nimport './style.css';\n\nconst x = import('./lazy');\nconst env = import.meta.env;\n";
+  assert.equal(stripAllImports('resources/js/app.ts', js), "const x = import('./lazy');\nconst env = import.meta.env;\n");
+  const vue = "<script setup>\nimport { ref } from 'vue';\nimport Modal from '@/Components/Modal.vue';\n\nconst open = ref(false);\n</script>\n\n<template>\n  <p>import x from 'y'</p>\n</template>\n";
+  assert.equal(stripAllImports('A.vue', vue), "<script setup>\nconst open = ref(false);\n</script>\n\n<template>\n  <p>import x from 'y'</p>\n</template>\n");
+  assert.equal(stripAllImports('README.md', 'import x from "y"\n'), 'import x from "y"\n');
+});
+
+test('transformContent strips imports only when asked, after the other transforms', () => {
+  const src = '<?php\n\nuse A\\B;\n\n/**\n * @property int $id\n */\nclass C {}\n';
+  assert.equal(transformContent('app/C.php', src), '<?php\n\nuse A\\B;\n\nclass C {}\n');
+  assert.equal(transformContent('app/C.php', src, { stripImports: true }), '<?php\n\nclass C {}\n');
 });

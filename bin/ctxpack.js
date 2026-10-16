@@ -30,6 +30,7 @@ Export options:
   --no-git              do not use git even inside a repository
   --keep-docs           keep @property/@method/@mixin in class docblocks (removed by default)
   --strip-comments      remove all comments (to compare the context size)
+  --strip-imports       remove PHP use and JS/TS/Vue import statements
 
 UI options:
   --port <number>       port (default ${DEFAULT_PORT})
@@ -66,6 +67,7 @@ Examples:
   --no-git              не використовувати git навіть у репозиторії
   --keep-docs           лишити @property/@method/@mixin у PHPDoc над класами (за замовчуванням прибираються)
   --strip-comments      прибрати всі коментарі (щоб порівняти розмір контексту)
+  --strip-imports       прибрати use у PHP та import у JS/TS/Vue
 
 Опції ui:
   --port <число>        порт (за замовчуванням ${DEFAULT_PORT})
@@ -81,7 +83,7 @@ Examples:
   ctxpack export --changed --related --copy --task "Додати фільтр за роллю"`,
 };
 
-const BOOL = new Set(['changed', 'related', 'split', 'stdout', 'copy', 'no-open', 'no-git', 'keep-docs', 'strip-comments', 'help']);
+const BOOL = new Set(['changed', 'related', 'split', 'stdout', 'copy', 'no-open', 'no-git', 'keep-docs', 'strip-comments', 'strip-imports', 'help']);
 const VALUE = new Set(['include', 'preset', 'depth', 'budget', 'task', 'out', 'port', 'lang']);
 
 // --lang is read before the full parse so that parse errors are already translated.
@@ -161,6 +163,7 @@ function exportCmd(root, args) {
     split: !!args.split,
     stripDocs: !args['keep-docs'],
     stripComments: !!args['strip-comments'],
+    stripImports: !!args['strip-imports'],
     save: !args.stdout,
   }, lang);
   for (const w of result.warnings) log(msg('cli.warning', { text: w.text }));
