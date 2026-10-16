@@ -629,11 +629,14 @@
     $('vRestore').hidden = !cut;
   }
 
+  // A Windows root (C:\…, \\wsl.localhost\…) gets backslashes in the file part too.
+  const ideFile = path => (st.ideRoot.includes('\\') ? `${st.ideRoot}\\${path.replace(/\//g, '\\')}` : `${st.ideRoot}/${path}`);
+
   async function peek(path) {
     view.path = path;
     openViewer('file', path);
     $('vToggle').disabled = !pickable(path);
-    $('vIde').href = `phpstorm://open?file=${encodeURIComponent(`${st.root}/${path}`)}&line=1`;
+    $('vIde').href = `phpstorm://open?file=${encodeURIComponent(ideFile(path))}&line=1`;
     updatePeekToggle();
     try {
       const f = await api('/api/file', { path });
@@ -1281,6 +1284,7 @@
       const data = await api('/api/tree');
       st.name = data.name;
       st.root = data.root;
+      st.ideRoot = data.ideRoot || data.root;
       st.git = data.git;
       st.files = data.files;
       st.byPath = new Map(data.files.map(f => [f.path, f]));

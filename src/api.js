@@ -11,6 +11,7 @@ import { estimateTokens } from './tokens.js';
 import { languageFor } from './render.js';
 import { t } from './i18n.js';
 import { hashText } from './cuts.js';
+import { ideRootFor } from './ide.js';
 
 const PEEK_LIMIT = 400 * 1024;
 const strings = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
@@ -87,6 +88,7 @@ export function createApi(root, { outDir = path.resolve('ctxpack-out'), useGit =
       return {
         name,
         root,
+        ideRoot: ideRootFor(root, cfg),
         git: scan.git,
         files: scan.files,
         rules: RULE_NAMES,

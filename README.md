@@ -97,6 +97,7 @@ Every field is optional:
 - `tokenCharsRatio` (3.2): characters per token. To calibrate, compare the counter with what your AI interface shows and adjust.
 - `budgets`: profiles like `{ "limit": 32000, "reserve": 6000 }`; `limit: null` means no limit.
 - `related.aliases` (`{"@": "resources/js"}`): import aliases.
+- `ideRoot`: the project root as PhpStorm sees it, for the **PhpStorm** button. Under WSL it is set automatically (`\\wsl.localhost\<distro>\home\…`, or `C:\…` for `/mnt/c/…`); set it when the IDE opens the project from another path.
 
 Secrets are never exported: `.env*` (except `.env.example`), keys, certificates, `storage/`, `auth.json`. Selected files are also scanned for lines that look like secrets, and the UI asks for confirmation before copying them.
 

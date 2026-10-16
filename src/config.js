@@ -33,6 +33,8 @@ export const DEFAULTS = {
     rules: {},
   },
   presets: {},
+  // Project root for phpstorm:// links when the IDE sees it under another path (see src/ide.js).
+  ideRoot: null,
 };
 
 export const STARTER = {
