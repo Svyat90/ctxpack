@@ -162,6 +162,20 @@ textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; paddi
 .eye:hover { color: var(--accent); background: var(--accent-soft); }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+dialog#result { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+  width: calc(100vw - 48px); height: calc(100vh - 48px); max-width: none; max-height: none; }
+dialog#result[open] { display: flex; flex-direction: column; }
+dialog#result::backdrop { background: rgb(0 0 0 / .45); }
+.search { display: flex; align-items: center; gap: 6px; flex: 1 1 340px; min-width: 0; }
+.search input { flex: 1; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--ink); }
+.search .btn { padding: 4px 10px; }
+#resCount { min-width: 7ch; text-align: right; }
+#resCount.none { color: var(--bad); }
+.res-tabs:not(:empty) { padding: 10px 14px 0; }
+.part.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+pre.code.res { padding-inline: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.code.res mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; border-radius: 2px; }
+pre.code.res mark.cur { background: var(--warn); color: var(--surface); outline: 2px solid var(--warn); }
 dialog#peek { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
   width: min(1100px, calc(100vw - 32px)); height: min(85vh, 900px); max-width: none; max-height: none; }
 dialog#peek[open] { display: flex; flex-direction: column; }

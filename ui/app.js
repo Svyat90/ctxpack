@@ -12,7 +12,7 @@
     'model-extras': 'Міграції та фабрики',
     'tests': 'Тести',
   };
-  const PREVIEW_LIMIT = 300000;
+  const MAX_HITS = 5000;
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -46,8 +46,9 @@
     budgets: {}, budget: 'small', split: false, maxFileKb: 200,
     rules: [], rel: { enabled: true, depth: 1, rules: {} }, depthByRule: {},
     presets: {}, suggestions: [], preview: null, exp: null,
-    prevOpen: false, secretAck: false, relSeq: 0, prevSeq: 0,
+    secretAck: false, relSeq: 0, prevSeq: 0,
   };
+  const res = { parts: [], part: 1, marks: [], cur: -1, capped: false };
   let storeKey = 'ctxpack';
 
   // ---- persistence (per project, per browser) ----
@@ -256,7 +257,6 @@
       if (seq !== st.prevSeq) return;
       st.preview = r;
       renderOutput();
-      if (st.prevOpen) showPreview();
     } catch (err) {
       toast(err.message);
     }
@@ -326,9 +326,10 @@
       toast(`Скопійовано${r.parts.length > 1 ? ` частину ${index} з ${r.parts.length}` : ''} · ~${fmt(part.tokens)} токенів`);
     } catch (err) {
       try {
-        await showPreview(index);
+        $('resQ').value = '';
+        await openResult(index);
         const range = document.createRange();
-        range.selectNodeContents($('md'));
+        range.selectNodeContents($('resCode'));
         const sel = getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
@@ -349,27 +350,78 @@
     }
   }
 
-  async function showPreview(index) {
-    st.prevOpen = true;
-    $('prevWrap').hidden = false;
-    $('prevBtn').textContent = 'Сховати перегляд';
+  // ---- result preview modal with text search ----
+  async function openResult(index) {
+    const dlg = $('result');
+    $('resMeta').textContent = 'Збираю…';
+    $('resTabs').innerHTML = '';
+    $('resCode').textContent = '';
+    if (!dlg.open) dlg.showModal();
     const r = await exportNow();
-    const parts = index ? [r.parts[index - 1]] : r.parts;
-    let text = parts.map(p => (r.parts.length > 1 ? `<!-- ── частина ${p.index} з ${r.parts.length} ── -->\n\n` : '') + p.markdown).join('\n\n');
-    const cut = text.length > PREVIEW_LIMIT;
-    if (cut && !index) text = text.slice(0, PREVIEW_LIMIT);
-    $('md').textContent = text;
-    $('prevNote').textContent = cut && !index ? `Показано перші ${fmt(PREVIEW_LIMIT)} символів. Копіювання бере весь текст.` : '';
+    res.parts = r.parts;
+    res.part = Math.min(index || 1, r.parts.length);
+    renderResult();
+    $('resQ').focus();
+    $('resQ').select();
   }
 
-  function togglePreview() {
-    if (st.prevOpen) {
-      st.prevOpen = false;
-      $('prevWrap').hidden = true;
-      $('prevBtn').textContent = 'Попередній перегляд';
+  function renderResult() {
+    const part = res.parts[res.part - 1];
+    const multi = res.parts.length > 1;
+    $('resMeta').textContent = `${part.files} файл. · ~${fmt(part.tokens)} токенів${multi ? ` · частина ${res.part} з ${res.parts.length}` : ''}`;
+    $('resTabs').innerHTML = multi ? res.parts.map(p => `<button class="part${p.index === res.part ? ' on' : ''}" type="button" data-act="resPart" data-i="${p.index}" aria-pressed="${p.index === res.part}">Частина ${p.index} · ${fmt(p.tokens)}</button>`).join('') : '';
+    $('resCopy').dataset.i = String(res.part);
+    $('resCopy').textContent = multi ? `Копіювати частину ${res.part}` : 'Копіювати MD';
+    searchResult();
+  }
+
+  // Case-insensitive search over the visible part; every hit is wrapped in <mark>, the current one gets .cur.
+  function searchResult() {
+    const md = res.parts[res.part - 1].markdown;
+    const q = $('resQ').value;
+    const code = $('resCode');
+    res.marks = [];
+    res.cur = -1;
+    res.capped = false;
+    if (!q) {
+      code.textContent = md;
+      updateResCount();
       return;
     }
-    showPreview().catch(err => toast(err.message));
+    const hay = md.toLowerCase();
+    const needle = q.toLowerCase();
+    let html = '';
+    let from = 0;
+    let n = 0;
+    for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
+      if (n === MAX_HITS) { res.capped = true; break; }
+      html += esc(md.slice(from, at)) + `<mark>${esc(md.slice(at, at + q.length))}</mark>`;
+      from = at + q.length;
+      n++;
+    }
+    code.innerHTML = html + esc(md.slice(from));
+    res.marks = [...code.querySelectorAll('mark')];
+    if (res.marks.length) stepResult(0, true);
+    else updateResCount();
+  }
+
+  function stepResult(delta, absolute = false) {
+    const total = res.marks.length;
+    if (!total) return;
+    if (res.cur >= 0) res.marks[res.cur].classList.remove('cur');
+    res.cur = absolute ? delta : (res.cur + delta + total) % total;
+    const m = res.marks[res.cur];
+    m.classList.add('cur');
+    m.scrollIntoView({ block: 'center', inline: 'nearest' });
+    updateResCount();
+  }
+
+  function updateResCount() {
+    const q = $('resQ').value;
+    const total = res.marks.length;
+    $('resCount').textContent = !q ? '' : total ? `${res.cur + 1} / ${total}${res.capped ? '+' : ''}` : 'Не знайдено';
+    $('resCount').classList.toggle('none', !!q && !total);
+    $('resPrev').disabled = $('resNext').disabled = total < 2;
   }
 
   // ---- presets & git ----
@@ -560,8 +612,21 @@
       case 'save':
         saveExport();
         return;
-      case 'togglePrev':
-        togglePreview();
+      case 'openResult':
+        openResult().catch(err => toast(err.message));
+        return;
+      case 'resPart':
+        res.part = Number(el.dataset.i);
+        renderResult();
+        return;
+      case 'resNext':
+        stepResult(1);
+        return;
+      case 'resPrev':
+        stepResult(-1);
+        return;
+      case 'resClose':
+        $('result').close();
         return;
       case 'savePreset':
         savePreset();
@@ -597,8 +662,30 @@
   });
 
   // A click on the backdrop lands on the <dialog> itself (it has no padding).
-  $('peek').addEventListener('click', e => {
-    if (e.target === e.currentTarget) e.currentTarget.close();
+  for (const id of ['peek', 'result']) {
+    $(id).addEventListener('click', e => {
+      if (e.target === e.currentTarget) e.currentTarget.close();
+    });
+  }
+  let resSearchTimer;
+  $('resQ').addEventListener('input', () => {
+    clearTimeout(resSearchTimer);
+    resSearchTimer = setTimeout(searchResult, 150);
+  });
+  $('resQ').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    clearTimeout(resSearchTimer);
+    if (!res.marks.length && $('resQ').value) searchResult();
+    else stepResult(e.shiftKey ? -1 : 1);
+  });
+  // Cmd/Ctrl+F inside the result window jumps to its own search box instead of the browser's.
+  $('result').addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      $('resQ').focus();
+      $('resQ').select();
+    }
   });
   $('q').addEventListener('input', e => {
     st.q = e.target.value.trim();

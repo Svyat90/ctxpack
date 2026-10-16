@@ -68,12 +68,8 @@
         <div class="actions">
           <button class="btn solid" type="button" data-act="copy" id="copyBtn">Копіювати MD</button>
           <button class="btn ghost" type="button" data-act="save">Зберегти у файл</button>
-          <button class="btn ghost" type="button" data-act="togglePrev" id="prevBtn">Попередній перегляд</button>
+          <button class="btn ghost" type="button" data-act="openResult">Переглянути результат</button>
           <label class="chk" for="split"><input type="checkbox" id="split"> Розбивати під ліміт</label>
-        </div>
-        <div id="prevWrap" hidden>
-          <pre class="md" id="md" tabindex="0"></pre>
-          <p class="note" id="prevNote"></p>
         </div>
       </div>
     </section>
@@ -90,6 +86,23 @@
   </div>
   <div id="peekWarn"></div>
   <div class="pk-body"><pre id="peekCode" class="code" tabindex="0"></pre></div>
+</dialog>
+<dialog id="result" class="modal" aria-labelledby="resTitle">
+  <div class="pk-head">
+    <div class="pk-title"><span id="resTitle" class="mono">Результат .md</span><span id="resMeta" class="tok"></span></div>
+    <div class="search">
+      <input type="search" id="resQ" placeholder="Пошук у тексті…" aria-label="Пошук у результаті" autocomplete="off">
+      <span id="resCount" class="tok" aria-live="polite"></span>
+      <button class="btn ghost" type="button" data-act="resPrev" id="resPrev" aria-label="Попередній збіг" title="Попередній (Shift+Enter)">↑</button>
+      <button class="btn ghost" type="button" data-act="resNext" id="resNext" aria-label="Наступний збіг" title="Наступний (Enter)">↓</button>
+    </div>
+    <div class="actions">
+      <button class="btn solid" type="button" data-act="copyPart" data-i="1" id="resCopy">Копіювати MD</button>
+      <button class="btn ghost" type="button" data-act="resClose" aria-label="Закрити результат">×</button>
+    </div>
+  </div>
+  <div class="parts res-tabs" id="resTabs"></div>
+  <div class="pk-body"><pre id="resCode" class="code res" tabindex="0"></pre></div>
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="/app.js"></script>
