@@ -169,32 +169,29 @@ textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; paddi
 .eye:hover { color: var(--accent); background: var(--accent-soft); }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-dialog#result { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+/* viewer: file preview and generated Markdown */
+dialog#viewer { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
   width: calc(100vw - 48px); height: calc(100vh - 48px); max-width: none; max-height: none; }
-dialog#result[open] { display: flex; flex-direction: column; }
-dialog#result::backdrop { background: rgb(0 0 0 / .45); }
+dialog#viewer[open] { display: flex; flex-direction: column; }
+dialog#viewer::backdrop { background: rgb(0 0 0 / .45); }
+.pk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.pk-title { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pk-title .mono { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
 .search { display: flex; align-items: center; gap: 6px; flex: 1 1 340px; min-width: 0; }
 .search input { flex: 1; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--ink); }
 .search .btn { padding: 4px 10px; }
-#resCount { min-width: 7ch; text-align: right; }
-#resCount.none { color: var(--bad); }
-.res-tabs:not(:empty) { padding: 10px 14px 0; }
+#vCount { min-width: 7ch; text-align: right; }
+#vCount.none { color: var(--bad); }
+#vWarn:not(:empty) { padding: 10px 14px 0; display: flex; flex-direction: column; gap: 6px; }
+.v-tabs:not(:empty) { padding: 10px 14px 0; }
 .part.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-pre.code.res { padding-inline: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
-pre.code.res mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; border-radius: 2px; }
-pre.code.res mark.cur { background: var(--warn); color: var(--surface); outline: 2px solid var(--warn); }
-dialog#peek { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
-  width: min(1100px, calc(100vw - 32px)); height: min(85vh, 900px); max-width: none; max-height: none; }
-dialog#peek[open] { display: flex; flex-direction: column; }
-dialog#peek::backdrop { background: rgb(0 0 0 / .45); }
-.pk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-.pk-title { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pk-title .mono { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
-#peekWarn:not(:empty) { padding: 10px 14px 0; display: flex; flex-direction: column; gap: 6px; }
 .pk-body { flex: 1; min-height: 0; overflow: auto; padding-block: 10px; }
-pre.code { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre; tab-size: 4; padding-right: 14px; }
+pre.code { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre; tab-size: 4; padding-inline: 0 14px; }
+pre.code.wrap { padding-inline: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 pre.code .ln { display: inline-block; width: 6ch; padding-right: 1.2ch; margin-right: 1.2ch; text-align: right; color: var(--muted); border-right: 1px solid var(--line); user-select: none; }
-pre.code mark { background: var(--warn-soft); color: var(--warn); }
+pre.code .secret { background: var(--warn-soft); color: var(--warn); }
+pre.code mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 2px; }
+pre.code mark.cur { background: var(--accent); color: var(--accent-ink); outline: 2px solid var(--accent); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 pre.md { margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; max-height: 260px; overflow: auto; white-space: pre; }
 .pb.stack { display: flex; flex-direction: column; gap: 14px; }

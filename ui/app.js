@@ -48,7 +48,7 @@
     presets: {}, suggestions: [], preview: null, exp: null,
     secretAck: false, relSeq: 0, prevSeq: 0,
   };
-  const res = { parts: [], part: 1, marks: [], cur: -1, capped: false };
+  const view = { mode: null, path: null, text: '', secretLines: new Set(), parts: [], part: 1, marks: [], cur: -1, capped: false };
   let storeKey = 'ctxpack';
 
   // ---- persistence (per project, per browser) ----
@@ -326,10 +326,10 @@
       toast(`Скопійовано${r.parts.length > 1 ? ` частину ${index} з ${r.parts.length}` : ''} · ~${fmt(part.tokens)} токенів`);
     } catch (err) {
       try {
-        $('resQ').value = '';
+        $('vQ').value = '';
         await openResult(index);
         const range = document.createRange();
-        range.selectNodeContents($('resCode'));
+        range.selectNodeContents($('vCode'));
         const sel = getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
@@ -350,79 +350,6 @@
     }
   }
 
-  // ---- result preview modal with text search ----
-  async function openResult(index) {
-    const dlg = $('result');
-    $('resMeta').textContent = 'Збираю…';
-    $('resTabs').innerHTML = '';
-    $('resCode').textContent = '';
-    if (!dlg.open) dlg.showModal();
-    const r = await exportNow();
-    res.parts = r.parts;
-    res.part = Math.min(index || 1, r.parts.length);
-    renderResult();
-    $('resQ').focus();
-    $('resQ').select();
-  }
-
-  function renderResult() {
-    const part = res.parts[res.part - 1];
-    const multi = res.parts.length > 1;
-    $('resMeta').textContent = `${part.files} файл. · ~${fmt(part.tokens)} токенів${multi ? ` · частина ${res.part} з ${res.parts.length}` : ''}`;
-    $('resTabs').innerHTML = multi ? res.parts.map(p => `<button class="part${p.index === res.part ? ' on' : ''}" type="button" data-act="resPart" data-i="${p.index}" aria-pressed="${p.index === res.part}">Частина ${p.index} · ${fmt(p.tokens)}</button>`).join('') : '';
-    $('resCopy').dataset.i = String(res.part);
-    $('resCopy').textContent = multi ? `Копіювати частину ${res.part}` : 'Копіювати MD';
-    searchResult();
-  }
-
-  // Case-insensitive search over the visible part; every hit is wrapped in <mark>, the current one gets .cur.
-  function searchResult() {
-    const md = res.parts[res.part - 1].markdown;
-    const q = $('resQ').value;
-    const code = $('resCode');
-    res.marks = [];
-    res.cur = -1;
-    res.capped = false;
-    if (!q) {
-      code.textContent = md;
-      updateResCount();
-      return;
-    }
-    const hay = md.toLowerCase();
-    const needle = q.toLowerCase();
-    let html = '';
-    let from = 0;
-    let n = 0;
-    for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
-      if (n === MAX_HITS) { res.capped = true; break; }
-      html += esc(md.slice(from, at)) + `<mark>${esc(md.slice(at, at + q.length))}</mark>`;
-      from = at + q.length;
-      n++;
-    }
-    code.innerHTML = html + esc(md.slice(from));
-    res.marks = [...code.querySelectorAll('mark')];
-    if (res.marks.length) stepResult(0, true);
-    else updateResCount();
-  }
-
-  function stepResult(delta, absolute = false) {
-    const total = res.marks.length;
-    if (!total) return;
-    if (res.cur >= 0) res.marks[res.cur].classList.remove('cur');
-    res.cur = absolute ? delta : (res.cur + delta + total) % total;
-    const m = res.marks[res.cur];
-    m.classList.add('cur');
-    m.scrollIntoView({ block: 'center', inline: 'nearest' });
-    updateResCount();
-  }
-
-  function updateResCount() {
-    const q = $('resQ').value;
-    const total = res.marks.length;
-    $('resCount').textContent = !q ? '' : total ? `${res.cur + 1} / ${total}${res.capped ? '+' : ''}` : 'Не знайдено';
-    $('resCount').classList.toggle('none', !!q && !total);
-    $('resPrev').disabled = $('resNext').disabled = total < 2;
-  }
 
   // ---- presets & git ----
   async function applyPreset(name) {
@@ -495,41 +422,124 @@
     }
   }
 
-  // ---- file preview ----
+  // ---- viewer: one modal for a file preview ("file") and for the generated Markdown ("result") ----
+  // Both modes share the text search: every hit is a <mark>, the current one gets .cur.
+  function openViewer(mode, title) {
+    view.mode = mode;
+    view.text = '';
+    view.secretLines = new Set();
+    $('vTitle').textContent = title;
+    $('vMeta').textContent = 'Завантаження…';
+    $('vWarn').innerHTML = '';
+    $('vTabs').innerHTML = '';
+    $('vToggle').hidden = $('vIde').hidden = mode !== 'file';
+    $('vCopy').hidden = mode !== 'result';
+    $('vCode').classList.toggle('wrap', mode === 'result');
+    renderView();
+    if (!$('viewer').open) $('viewer').showModal();
+    $('vQ').focus();
+    $('vQ').select();
+  }
+
   function updatePeekToggle() {
-    const on = st.sel.has(st.peekPath);
-    $('peekToggle').textContent = on ? 'Прибрати з вибору' : 'Додати до вибору';
-    $('peekToggle').classList.toggle('solid', !on);
+    const on = st.sel.has(view.path);
+    $('vToggle').textContent = on ? 'Прибрати з вибору' : 'Додати до вибору';
+    $('vToggle').classList.toggle('solid', !on);
   }
 
   async function peek(path) {
-    const dlg = $('peek');
-    st.peekPath = path;
-    $('peekTitle').textContent = path;
-    $('peekMeta').textContent = 'Завантаження…';
-    $('peekWarn').innerHTML = '';
-    $('peekCode').textContent = '';
-    $('peekToggle').disabled = !pickable(path);
-    $('peekIde').href = `phpstorm://open?file=${encodeURIComponent(`${st.root}/${path}`)}&line=1`;
+    view.path = path;
+    openViewer('file', path);
+    $('vToggle').disabled = !pickable(path);
+    $('vIde').href = `phpstorm://open?file=${encodeURIComponent(`${st.root}/${path}`)}&line=1`;
     updatePeekToggle();
-    if (!dlg.open) dlg.showModal();
     try {
       const f = await api('/api/file', { path });
-      if (st.peekPath !== path) return;
-      $('peekMeta').textContent = `${f.lines} рядків · ~${fmt(f.tokens)} токенів${f.language ? ' · ' + f.language : ''}`;
-      const secretLines = new Set(f.secrets.map(s => s.line));
-      $('peekCode').innerHTML = f.content.split('\n')
-        .map((line, i) => `<span class="ln">${i + 1}</span>${secretLines.has(i + 1) ? `<mark>${esc(line)}</mark>` : esc(line)}`)
-        .join('\n');
+      if (view.mode !== 'file' || view.path !== path) return;
+      $('vMeta').textContent = `${f.lines} рядків · ~${fmt(f.tokens)} токенів${f.language ? ' · ' + f.language : ''}`;
+      view.text = f.content;
+      view.secretLines = new Set(f.secrets.map(s => s.line));
       const notes = [];
-      if (secretLines.size) notes.push(`<div class="warn-i">Можливі секрети в рядках: ${[...secretLines].join(', ')}</div>`);
+      if (view.secretLines.size) notes.push(`<div class="warn-i">Можливі секрети в рядках: ${[...view.secretLines].join(', ')}</div>`);
       if (f.truncated) notes.push('<div class="note">Файл великий: показано перші 400 КБ.</div>');
       if (!f.exportable) notes.push(`<div class="note">Файл більший за ${st.maxFileKb} КБ, тому в експорт не потрапить.</div>`);
-      $('peekWarn').innerHTML = notes.join('');
+      $('vWarn').innerHTML = notes.join('');
+      renderView();
     } catch (err) {
-      $('peekMeta').textContent = '';
-      $('peekWarn').innerHTML = `<div class="warn-i bad">${esc(err.message)}</div>`;
+      $('vMeta').textContent = '';
+      $('vWarn').innerHTML = `<div class="warn-i bad">${esc(err.message)}</div>`;
     }
+  }
+
+  async function openResult(index) {
+    openViewer('result', 'Результат .md');
+    const r = await exportNow();
+    if (view.mode !== 'result') return;
+    view.parts = r.parts;
+    showPart(Math.min(index || 1, r.parts.length));
+  }
+
+  function showPart(index) {
+    view.part = index;
+    const part = view.parts[index - 1];
+    const multi = view.parts.length > 1;
+    $('vMeta').textContent = `${part.files} файл. · ~${fmt(part.tokens)} токенів${multi ? ` · частина ${index} з ${view.parts.length}` : ''}`;
+    $('vTabs').innerHTML = multi ? view.parts.map(p => `<button class="part${p.index === index ? ' on' : ''}" type="button" data-act="vPart" data-i="${p.index}" aria-pressed="${p.index === index}">Частина ${p.index} · ${fmt(p.tokens)}</button>`).join('') : '';
+    $('vCopy').dataset.i = String(index);
+    $('vCopy').textContent = multi ? `Копіювати частину ${index}` : 'Копіювати MD';
+    view.text = part.markdown;
+    renderView();
+  }
+
+  // Renders line by line so a file keeps its line numbers and secret highlighting under search marks.
+  function renderView() {
+    const q = $('vQ').value.toLowerCase();
+    const numbered = view.mode === 'file';
+    let hits = 0;
+    view.capped = false;
+    view.renderedQ = q;
+    const html = view.text.split('\n').map((line, i) => {
+      let body = '';
+      if (!q) {
+        body = esc(line);
+      } else {
+        const low = line.toLowerCase();
+        let from = 0;
+        for (let at = low.indexOf(q); at !== -1; at = low.indexOf(q, from)) {
+          if (hits === MAX_HITS) { view.capped = true; break; }
+          body += esc(line.slice(from, at)) + `<mark>${esc(line.slice(at, at + q.length))}</mark>`;
+          from = at + q.length;
+          hits++;
+        }
+        body += esc(line.slice(from));
+      }
+      if (view.secretLines.has(i + 1)) body = `<span class="secret">${body}</span>`;
+      return numbered ? `<span class="ln">${i + 1}</span>${body}` : body;
+    }).join('\n');
+    $('vCode').innerHTML = html;
+    view.marks = [...$('vCode').querySelectorAll('mark')];
+    view.cur = -1;
+    if (view.marks.length) stepView(0, true);
+    else updateViewCount();
+  }
+
+  function stepView(delta, absolute = false) {
+    const total = view.marks.length;
+    if (!total) return;
+    if (view.cur >= 0) view.marks[view.cur].classList.remove('cur');
+    view.cur = absolute ? delta : (view.cur + delta + total) % total;
+    const m = view.marks[view.cur];
+    m.classList.add('cur');
+    m.scrollIntoView({ block: 'center', inline: 'nearest' });
+    updateViewCount();
+  }
+
+  function updateViewCount() {
+    const q = $('vQ').value;
+    const total = view.marks.length;
+    $('vCount').textContent = !q || !view.text ? '' : total ? `${view.cur + 1} / ${total}${view.capped ? '+' : ''}` : 'Не знайдено';
+    $('vCount').classList.toggle('none', !!q && !!view.text && !total);
+    $('vPrev').disabled = $('vNext').disabled = total < 2;
   }
 
   function toast(msg) {
@@ -575,15 +585,12 @@
       case 'peek':
         peek(p);
         return;
-      case 'peekClose':
-        $('peek').close();
-        return;
-      case 'peekToggle':
-        if (st.sel.has(st.peekPath)) {
-          st.sel.delete(st.peekPath);
+      case 'vToggle':
+        if (st.sel.has(view.path)) {
+          st.sel.delete(view.path);
         } else {
-          st.sel.add(st.peekPath);
-          openAncestors([st.peekPath]);
+          st.sel.add(view.path);
+          openAncestors([view.path]);
         }
         updatePeekToggle();
         break;
@@ -615,18 +622,17 @@
       case 'openResult':
         openResult().catch(err => toast(err.message));
         return;
-      case 'resPart':
-        res.part = Number(el.dataset.i);
-        renderResult();
+      case 'vPart':
+        showPart(Number(el.dataset.i));
         return;
-      case 'resNext':
-        stepResult(1);
+      case 'vNext':
+        stepView(1);
         return;
-      case 'resPrev':
-        stepResult(-1);
+      case 'vPrev':
+        stepView(-1);
         return;
-      case 'resClose':
-        $('result').close();
+      case 'vClose':
+        $('viewer').close();
         return;
       case 'savePreset':
         savePreset();
@@ -662,29 +668,27 @@
   });
 
   // A click on the backdrop lands on the <dialog> itself (it has no padding).
-  for (const id of ['peek', 'result']) {
-    $(id).addEventListener('click', e => {
-      if (e.target === e.currentTarget) e.currentTarget.close();
-    });
-  }
-  let resSearchTimer;
-  $('resQ').addEventListener('input', () => {
-    clearTimeout(resSearchTimer);
-    resSearchTimer = setTimeout(searchResult, 150);
+  $('viewer').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.close();
   });
-  $('resQ').addEventListener('keydown', e => {
+  let viewSearchTimer;
+  $('vQ').addEventListener('input', () => {
+    clearTimeout(viewSearchTimer);
+    viewSearchTimer = setTimeout(renderView, 150);
+  });
+  $('vQ').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    clearTimeout(resSearchTimer);
-    if (!res.marks.length && $('resQ').value) searchResult();
-    else stepResult(e.shiftKey ? -1 : 1);
+    clearTimeout(viewSearchTimer);
+    if (view.renderedQ !== $('vQ').value.toLowerCase()) renderView();
+    else stepView(e.shiftKey ? -1 : 1);
   });
-  // Cmd/Ctrl+F inside the result window jumps to its own search box instead of the browser's.
-  $('result').addEventListener('keydown', e => {
+  // Cmd/Ctrl+F inside the viewer jumps to its own search box instead of the browser's.
+  $('viewer').addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
-      $('resQ').focus();
-      $('resQ').select();
+      $('vQ').focus();
+      $('vQ').select();
     }
   });
   $('q').addEventListener('input', e => {

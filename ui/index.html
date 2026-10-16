@@ -79,34 +79,26 @@
     </section>
   </main>
 </div>
-<dialog id="peek" aria-labelledby="peekTitle">
+<!-- One viewer for both a single file and the generated Markdown -->
+<dialog id="viewer" aria-labelledby="vTitle">
   <div class="pk-head">
-    <div class="pk-title"><span id="peekTitle" class="mono"></span><span id="peekMeta" class="tok"></span></div>
-    <div class="actions">
-      <button class="btn solid" type="button" data-act="peekToggle" id="peekToggle">Додати до вибору</button>
-      <a class="btn ghost" id="peekIde" href="#" title="Відкрити файл у PhpStorm">PhpStorm</a>
-      <button class="btn ghost" type="button" data-act="peekClose" aria-label="Закрити перегляд">×</button>
-    </div>
-  </div>
-  <div id="peekWarn"></div>
-  <div class="pk-body"><pre id="peekCode" class="code" tabindex="0"></pre></div>
-</dialog>
-<dialog id="result" class="modal" aria-labelledby="resTitle">
-  <div class="pk-head">
-    <div class="pk-title"><span id="resTitle" class="mono">Результат .md</span><span id="resMeta" class="tok"></span></div>
+    <div class="pk-title"><span id="vTitle" class="mono"></span><span id="vMeta" class="tok"></span></div>
     <div class="search">
-      <input type="search" id="resQ" placeholder="Пошук у тексті…" aria-label="Пошук у результаті" autocomplete="off">
-      <span id="resCount" class="tok" aria-live="polite"></span>
-      <button class="btn ghost" type="button" data-act="resPrev" id="resPrev" aria-label="Попередній збіг" title="Попередній (Shift+Enter)">↑</button>
-      <button class="btn ghost" type="button" data-act="resNext" id="resNext" aria-label="Наступний збіг" title="Наступний (Enter)">↓</button>
+      <input type="search" id="vQ" placeholder="Пошук у тексті…" aria-label="Пошук у тексті" autocomplete="off">
+      <span id="vCount" class="tok" aria-live="polite"></span>
+      <button class="btn ghost" type="button" data-act="vPrev" id="vPrev" aria-label="Попередній збіг" title="Попередній (Shift+Enter)">↑</button>
+      <button class="btn ghost" type="button" data-act="vNext" id="vNext" aria-label="Наступний збіг" title="Наступний (Enter)">↓</button>
     </div>
     <div class="actions">
-      <button class="btn solid" type="button" data-act="copyPart" data-i="1" id="resCopy">Копіювати MD</button>
-      <button class="btn ghost" type="button" data-act="resClose" aria-label="Закрити результат">×</button>
+      <button class="btn solid" type="button" data-act="vToggle" id="vToggle">Додати до вибору</button>
+      <a class="btn ghost" id="vIde" href="#" title="Відкрити файл у PhpStorm">PhpStorm</a>
+      <button class="btn solid" type="button" data-act="copyPart" data-i="1" id="vCopy">Копіювати MD</button>
+      <button class="btn ghost" type="button" data-act="vClose" aria-label="Закрити">×</button>
     </div>
   </div>
-  <div class="parts res-tabs" id="resTabs"></div>
-  <div class="pk-body"><pre id="resCode" class="code res" tabindex="0"></pre></div>
+  <div id="vWarn"></div>
+  <div class="parts v-tabs" id="vTabs"></div>
+  <div class="pk-body"><pre id="vCode" class="code" tabindex="0"></pre></div>
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="/app.js"></script>
