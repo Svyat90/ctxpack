@@ -705,7 +705,7 @@
   // ---- viewer: file navigation in the result ----
   function renderNav() {
     const nav = $('vNav');
-    nav.hidden = view.mode !== 'result' || !view.blocks.length;
+    nav.hidden = $('vGutter').hidden = view.mode !== 'result' || !view.blocks.length;
     if (nav.hidden) {
       nav.innerHTML = '';
       return;
@@ -1276,6 +1276,52 @@
     });
   });
   applyCols();
+
+  // ---- resizable file list in the result viewer ----
+  const NAV_KEY = 'ctxpack:navWidth';
+  const NAV_DEFAULT = 280;
+  const NAV_MIN = 160;
+  let navWidth = NAV_DEFAULT;
+  try { navWidth = Number(localStorage.getItem(NAV_KEY)) || NAV_DEFAULT; } catch {}
+
+  // The code keeps at least a third of the viewer.
+  function setNavWidth(px, save) {
+    const max = Math.max(NAV_MIN, $('viewer').clientWidth * 0.67 || innerWidth * 0.67);
+    navWidth = Math.round(Math.min(Math.max(px, NAV_MIN), max));
+    $('vNav').style.setProperty('--nav-w', `${navWidth}px`);
+    if (save) try { localStorage.setItem(NAV_KEY, String(navWidth)); } catch {}
+  }
+
+  (g => {
+    g.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      g.setPointerCapture(e.pointerId);
+      const w0 = navWidth;
+      const x0 = e.clientX;
+      g.classList.add('active');
+      document.body.classList.add('resizing');
+      const move = ev => setNavWidth(w0 + ev.clientX - x0);
+      const up = () => {
+        g.removeEventListener('pointermove', move);
+        g.removeEventListener('pointerup', up);
+        g.removeEventListener('pointercancel', up);
+        g.classList.remove('active');
+        document.body.classList.remove('resizing');
+        setNavWidth(navWidth, true);
+      };
+      g.addEventListener('pointermove', move);
+      g.addEventListener('pointerup', up);
+      g.addEventListener('pointercancel', up);
+    });
+    g.addEventListener('dblclick', () => setNavWidth(NAV_DEFAULT, true));
+    g.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      setNavWidth(navWidth + (e.key === 'ArrowLeft' ? -32 : 32), true);
+    });
+  })($('vGutter'));
+  setNavWidth(navWidth);
 
   // ---- boot ----
   async function init() {

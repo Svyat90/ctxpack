@@ -28,7 +28,7 @@ The file tree is on the left, related-file suggestions in the middle, and the to
 - **EN / УКР** in the header switches the interface language. The choice is remembered in the browser.
 - **Expand all / Collapse** above the tree opens every folder, or closes them all when any is open.
 - Drag the strip between panels to resize them (or focus it and use ← →). Double-click the strip to reset.
-- **View result** opens the generated Markdown in a large window with text search: Enter / Shift+Enter or ↑ ↓ move between matches, Cmd/Ctrl+F focuses the search box. Split results get a tab per part. The list of files on the left jumps to where each file starts.
+- **View result** opens the generated Markdown in a large window with text search: Enter / Shift+Enter or ↑ ↓ move between matches, Cmd/Ctrl+F focuses the search box. Split results get a tab per part. The list of files on the left jumps to where each file starts; drag its right edge to widen it.
 - Clicking a file name in the tree opens its **preview** in the same window with the same search, plus line numbers, highlighted possible secrets, **Add to selection** and **PhpStorm**. Clicking a file in **Selected files** does the same. Blocked files (`.env` and similar) are never shown.
 - The **32K · small** profile gives 26K usable tokens (6K stay free for your prompt and the answer). **no limit** is for an agent without a limit.
 - **Split to fit the limit** divides the result into parts made of whole files. Each part has its own copy button.

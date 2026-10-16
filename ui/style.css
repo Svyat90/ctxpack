@@ -226,7 +226,12 @@ dialog#viewer::backdrop { background: rgb(0 0 0 / .45); }
 .pk-body { flex: 1; min-height: 0; display: flex; }
 .pk-code { flex: 1; min-width: 0; overflow: auto; padding-block: 10px; position: relative; }
 /* result: files of the part on the left */
-.v-nav { flex: none; width: 280px; max-width: 34%; overflow: auto; border-right: 1px solid var(--line); padding: 8px 0; display: flex; flex-direction: column; }
+.v-nav { flex: none; width: var(--nav-w, 280px); overflow: auto; border-right: 1px solid var(--line); padding: 8px 0; display: flex; flex-direction: column; }
+/* drag strip between the file list and the code (set by app.js as --nav-w) */
+.v-gutter { flex: none; width: 9px; margin-left: -5px; position: relative; z-index: 1; cursor: col-resize; touch-action: none; }
+.v-gutter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px; border-radius: 2px; background: transparent; transition: background .12s; }
+.v-gutter:hover::after, .v-gutter.active::after, .v-gutter:focus-visible::after { background: var(--accent); }
+.v-gutter:focus-visible { outline: none; }
 .v-nav .lbl { padding: 2px 12px 6px; margin: 0; }
 .nv { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 3px 12px; text-align: left; min-width: 0; }
 .nv:hover { background: var(--surface-2); }
@@ -234,7 +239,7 @@ dialog#viewer::backdrop { background: rgb(0 0 0 / .45); }
 .nv.on .rn { color: var(--accent); }
 .nv .rp { flex: 1 1 auto; font-size: 12px; }
 .nv-cut { color: var(--warn); font-size: 11px; flex: none; }
-@media (max-width: 760px) { .v-nav { display: none; } }
+@media (max-width: 760px) { .v-nav, .v-gutter { display: none; } }
 /* cut blocks */
 pre.code .l.cut-row { display: inline-block; min-width: 100%; color: var(--muted); font-style: italic;
   background: repeating-linear-gradient(-45deg, var(--surface-2) 0 6px, transparent 6px 12px); }
