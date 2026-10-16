@@ -27,8 +27,6 @@
     return `${dir ? `<span class="rd"><bdi>${esc(dir)}</bdi></span>` : ''}<span class="rn">${esc(p.slice(i + 1))}</span>`;
   }
   const pathLabel = p => `<button type="button" class="rp" data-act="peek" data-p="${esc(p)}" aria-label="${esc(t('preview', { path: p }))}">${pathSpans(p)}</button>`;
-  // `p` must already be escaped.
-  const eyeBtn = p => `<button class="eye" type="button" data-act="peek" data-p="${p}" aria-label="${esc(t('preview', { path: p }))}" title="${esc(t('previewTitle'))}"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>`;
 
   async function api(url, body, method) {
     const res = await fetch(url, {
@@ -159,6 +157,7 @@
     $('tree').innerHTML = out.join('') || `<div class="empty">${esc(q ? t('nothingFound') : t('noFiles'))}</div>`;
     $('tree').querySelectorAll('[data-indet]').forEach(i => { i.indeterminate = true; });
     $('selCount').textContent = t('selected', { n: st.sel.size });
+    $('openAll').textContent = st.open.size ? t('collapse') : t('expandAll');
   }
 
   function rows(n, d, vis, out) {
@@ -171,7 +170,7 @@
         const tag = f.flag === 'deny' ? `<span class="tag deny">${esc(t('blocked'))}</span>`
           : f.flag === 'big' ? `<span class="tag ign">${esc(t('tooBig', { kb: st.maxFileKb }))}</span>`
           : `<span class="tok">${fmt(f.tokens)}</span>`;
-        out.push(`<div class="row${on ? ' is-sel' : ''}${f.flag ? ' off' : ''}" style="--d:${d}"><span class="chev none"></span><input type="checkbox" data-act="toggle" data-p="${p}" ${on ? 'checked' : ''} ${f.flag ? 'disabled' : ''} aria-label="${p}"><span class="name" title="${p}">${esc(k.name)}</span>${f.flag === 'deny' ? '' : eyeBtn(p)}${tag}</div>`);
+        out.push(`<div class="row${on ? ' is-sel' : ''}${f.flag ? ' off' : ''}" style="--d:${d}"><span class="chev none"></span><input type="checkbox" data-act="toggle" data-p="${p}" ${on ? 'checked' : ''} ${f.flag ? 'disabled' : ''} aria-label="${p}">${f.flag === 'deny' ? `<span class="name" title="${p}">${esc(k.name)}</span>` : `<button type="button" class="name file" data-act="peek" data-p="${p}" title="${esc(t('preview', { path: k.path }))}">${esc(k.name)}</button>`}${tag}</div>`);
         continue;
       }
       const open = !!vis || st.open.has(k.path);
@@ -1053,8 +1052,10 @@
       case 'clear':
         st.sel.clear();
         break;
-      case 'collapse':
-        st.open.clear();
+      case 'openAll':
+        // Collapses everything when something is open, otherwise opens every folder.
+        if (st.open.size) st.open.clear();
+        else st.dirs.forEach((_, path) => st.open.add(path));
         renderTree();
         return;
       case 'changed':

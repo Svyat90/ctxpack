@@ -26,9 +26,10 @@ The browser opens `http://127.0.0.1:3001`. Use `--port 3002` for another port. I
 The file tree is on the left, related-file suggestions in the middle, and the token budget, task, warnings and the **Copy MD** / **Save to file** buttons on the right.
 
 - **EN / УКР** in the header switches the interface language. The choice is remembered in the browser.
+- **Expand all / Collapse** above the tree opens every folder, or closes them all when any is open.
 - Drag the strip between panels to resize them (or focus it and use ← →). Double-click the strip to reset.
 - **View result** opens the generated Markdown in a large window with text search: Enter / Shift+Enter or ↑ ↓ move between matches, Cmd/Ctrl+F focuses the search box. Split results get a tab per part. The list of files on the left jumps to where each file starts.
-- The **eye** button next to a file (shown on hover) opens its **preview** in the same window with the same search, plus line numbers, highlighted possible secrets, **Add to selection** and **PhpStorm**. Clicking a file in **Selected files** does the same. Blocked files (`.env` and similar) are never shown.
+- Clicking a file name in the tree opens its **preview** in the same window with the same search, plus line numbers, highlighted possible secrets, **Add to selection** and **PhpStorm**. Clicking a file in **Selected files** does the same. Blocked files (`.env` and similar) are never shown.
 - The **32K · small** profile gives 26K usable tokens (6K stay free for your prompt and the answer). **no limit** is for an agent without a limit.
 - **Split to fit the limit** divides the result into parts made of whole files. Each part has its own copy button.
 - **Strip @property/@method from class PHPDoc** (on by default) removes the `@property`, `@property-read`, `@property-write`, `@method` and `@mixin` lines that laravel-ide-helper writes above classes. A description in the same docblock stays; a block left empty is removed. Method docblocks are not touched.

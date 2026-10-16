@@ -93,6 +93,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; flex: none; }
 .name { font-family: var(--font-mono); font-size: 12.5px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .name.dir { font-weight: 500; }
+button.name.file { border: 0; background: none; padding: 0; text-align: left; color: inherit; font: inherit; font-family: var(--font-mono); font-size: 12.5px; cursor: pointer; }
+button.name.file:hover { color: var(--accent); text-decoration: underline; }
 .tok { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
 .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 3px; flex: none; }
 .tag.deny { background: var(--bad-soft); color: var(--bad); }
@@ -203,10 +205,6 @@ textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; paddi
 .empty.err { color: var(--bad); }
 
 /* file preview */
-.eye { border: 0; background: none; padding: 2px 3px; color: var(--muted); display: inline-grid; place-items: center; border-radius: 4px; flex: none; opacity: 0; }
-.row:hover .eye, .eye:focus-visible { opacity: 1; }
-@media (hover: none) { .eye { opacity: 1; } }
-.eye:hover { color: var(--accent); background: var(--accent-soft); }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 /* viewer: file preview and generated Markdown */
